@@ -316,8 +316,16 @@
 };
 
 &iomuxc {
+    pinctrl-0 = <&pinctrl_hog>;
 	pinctrl-names = "default";
 
+    pinctrl_hog: hoggrp {
+      fsl,pins = <
+        MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05 0x140
+        MX8MP_IOMUXC_NAND_DQS__GPIO3_IO14 0x140
+      >;
+    };
+        
 	pinctrl_eqos: eqosgrp {
 		fsl,pins = <
 			MX8MP_IOMUXC_ENET_MDC__ENET_QOS_MDC	0x3

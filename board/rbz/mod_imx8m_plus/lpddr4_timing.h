@@ -7,6 +7,11 @@
 extern struct dram_timing_info dram_timing_1gb_micron;
 
 /*
+ * timings for 2GB Micron
+ */
+extern struct dram_timing_info dram_timing_2gb_micron;
+
+/*
  * timings for 4GB Micron
  */
 extern struct dram_timing_info dram_timing_4gb_micron;

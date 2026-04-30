@@ -9,6 +9,10 @@
 		multiple-images;
 	};
 
+    config {
+      rbz,hw-coding-gpios = <&gpio5 5 0>, <&gpio3 14 0>;
+    };
+
 	wdt-reboot {
 		compatible = "wdt-reboot";
 		wdt = <&wdog1>;
@@ -106,6 +110,10 @@
 
 &iomuxc {
 	u-boot,dm-spl;
+};
+
+&pinctrl_hog {
+  u-boot,dm-spl;
 };
 
 &pinctrl_uart3 {

@@ -69,6 +69,36 @@ int spl_board_boot_device(enum boot_device boot_dev_spl)
 #endif
 }
 
+__weak unsigned int get_hw_version(void)
+{
+  struct gpio_desc gpio[2];
+  unsigned int gpio_value[2];
+  unsigned int hw_version;
+  ofnode node;
+  int ret;
+
+  node = ofnode_path("/config");
+  if (!ofnode_valid(node)) {
+    printf("%s: no /config node?\n", __func__);
+    return 2;
+  }
+
+  ret = gpio_request_list_by_name_nodev(node, "rbz,hw-coding-gpios",
+      gpio, ARRAY_SIZE(gpio), GPIOD_IS_IN);
+
+  gpio_value[0] = dm_gpio_get_value(&(gpio[0]));
+  gpio_value[1] = dm_gpio_get_value(&(gpio[1]));
+
+  if (gpio_value[0] == 0 && gpio_value[1] == 0)
+    hw_version = 3;
+  else
+    hw_version = 2;
+
+  gpio_free_list_nodev(gpio, ret);
+
+  return hw_version;
+} 
+
 /* Function used to identify the DDR.
  * Function returns the timing parameters to use for DDR training, or NULL if failed
  * to identify the DDR.
@@ -83,8 +113,12 @@ int spl_board_boot_device(enum boot_device boot_dev_spl)
 static struct dram_timing_info *spl_identify_ddr(bool *needs_training)
 {
   int ret;
-  unsigned int mr5, mr6, mr7, mr8;
+  unsigned int mr0, mr5, mr6, mr7, mr8;
+  unsigned int hw_version;
   bool tmp;
+
+  hw_version = get_hw_version();
+  printf("HW version: %d\n", hw_version);
 
   /* Init the @needs_training argument */
   if (!needs_training)
@@ -93,39 +127,65 @@ static struct dram_timing_info *spl_identify_ddr(bool *needs_training)
 
   /* Training with 4G Micron */
   if (!ddr_init(&dram_timing_4gb_micron)) {
+    mr0 = lpddr4_mr_read(0xF, 0x0);
     mr5 = lpddr4_mr_read(0xF, 0x5);
     mr6 = lpddr4_mr_read(0xF, 0x6);
     mr7 = lpddr4_mr_read(0xF, 0x7);
     mr8 = lpddr4_mr_read(0xF, 0x8);
 
-    printf("MR5=0x%x, MR6=0x%x, MR7=0x%x, MR8=0x%x\n", mr5, mr6, mr7, mr8);
+    printf("MR0=0x%x, MR5=0x%x, MR6=0x%x, MR7=0x%x, MR8=0x%x\n", mr0, mr5, mr6, mr7, mr8);
 
     printf("DDR 4G Micron idenfified!\n");
     *needs_training = false;
     return &dram_timing_4gb_micron;
   } else {
-    /* Trainig with 1G Micron */
-    ret = ddr_init(&dram_timing_1gb_micron);
-    if (ret)
-      goto err;
+    if (hw_version == 2) {
+      /* Trainig with 1G Micron */
+      ret = ddr_init(&dram_timing_1gb_micron);
+      if (ret)
+        goto err;
 
-    mr5 = lpddr4_mr_read(0xF, 0x5);
-    mr6 = lpddr4_mr_read(0xF, 0x6);
-    mr7 = lpddr4_mr_read(0xF, 0x7);
-    mr8 = lpddr4_mr_read(0xF, 0x8);
+      mr5 = lpddr4_mr_read(0xF, 0x5);
+      mr6 = lpddr4_mr_read(0xF, 0x6);
+      mr7 = lpddr4_mr_read(0xF, 0x7);
+      mr8 = lpddr4_mr_read(0xF, 0x8);
 
-    printf("MR5=0x%x, MR6=0x%x, MR7=0x%x, MR8=0x%x\n", mr5, mr6, mr7, mr8);
+      printf("HW=2, MR5=0x%x, MR6=0x%x, MR7=0x%x, MR8=0x%x\n", mr5, mr6, mr7, mr8);
 
-    if (mr5 == 0xff && mr6 == 0x54 && mr7 == 0x1 && mr8 == 0x10) {
-      printf("DDR 1G Micron identified!\n");
-      *needs_training = false;
-      return &dram_timing_1gb_micron;
-    } else if (mr5 == 0xff && mr6 == 0x7 && mr7 == 0xb8 && mr8 == 0x10) {
-      printf("DDR 2G Micron identified!\n");
-      return &dram_timing_1gb_micron;   // CAMBIAR A 2GB
+      if (mr5 == 0xff && mr6 == 0x54 && mr7 == 0x1 && mr8 == 0x10) {
+        printf("DDR 1G Micron identified!\n");
+        *needs_training = false;
+        return &dram_timing_1gb_micron;
+      } else if (mr5 == 0xff && mr6 == 0x7 && mr7 == 0xb8 && mr8 == 0x10) {
+        printf("DDR 2G Micron identified!\n");
+        return &dram_timing_1gb_micron;   // CAMBIAR A 2GB
+      } else {
+        printf("DDR 2G Micron identified!\n");
+        return &dram_timing_1gb_micron;   // CAMBIAR A 2GB
+      }
     } else {
-      printf("DDR 2G Micron identified!\n");
-      return &dram_timing_1gb_micron;   // CAMBIAR A 2GB
+      /* Trainig with 1G Micron */
+      ret = ddr_init(&dram_timing_1gb_micron);
+      if (ret)
+        goto err;
+      mr0 = lpddr4_mr_read(0xF, 0x0);
+      mr5 = lpddr4_mr_read(0xF, 0x5);
+      mr6 = lpddr4_mr_read(0xF, 0x6);
+      mr7 = lpddr4_mr_read(0xF, 0x7);
+      mr8 = lpddr4_mr_read(0xF, 0x8);
+
+      printf("HW=3, MR0=0x%x, MR5=0x%x, MR6=0x%x, MR7=0x%x, MR8=0x%x\n", mr0, mr5, mr6, mr7, mr8);
+
+      if (mr0 == 0xb9 && mr5 == 0xff && mr6 == 0x07 && mr8 == 0x10) {
+        printf("DDR 2G Micron identified!\n");
+        return &dram_timing_2gb_micron;
+      } else if (mr0 == 0x98 && mr5 == 0xff && mr6 == 0x3 && mr8 == 0x8) {
+        printf("DDR 1G Micron identified!\n");
+        return &dram_timing_2gb_micron;
+      } else {
+        printf("DDR not identified!\n");
+        return &dram_timing_2gb_micron;
+      }
     }
   }
 

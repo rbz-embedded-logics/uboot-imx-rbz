@@ -34,6 +34,37 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+#define HW_VER_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_ODE | PAD_CTL_PUE | PAD_CTL_PE)
+
+#define HW_VER_0    IMX_GPIO_NR(3, 14)
+#define HW_VER_1    IMX_GPIO_NR(5, 5)
+
+static iomux_v3_cfg_t hv_mux_gpio[] = {
+  MX8MP_PAD_NAND_DQS__GPIO3_IO14 | MUX_PAD_CTRL(HW_VER_PAD_CTRL),
+  MX8MP_PAD_SPDIF_EXT_CLK__GPIO5_IO05 | MUX_PAD_CTRL(HW_VER_PAD_CTRL),
+};
+
+__weak unsigned int get_hw_version(void)
+{
+  unsigned int gpio_value[2];
+  unsigned int hw_version;
+
+  imx_iomux_v3_setup_multiple_pads(hv_mux_gpio, ARRAY_SIZE(hv_mux_gpio));
+  gpio_request(HW_VER_0, "hw_ver_0");
+  gpio_request(HW_VER_1, "hw_ver_1");
+  gpio_direction_input(HW_VER_0);
+  gpio_direction_input(HW_VER_1);
+  gpio_value[0] = gpio_get_value(HW_VER_0);
+  gpio_value[1] = gpio_get_value(HW_VER_1);
+
+  if (gpio_value[0] == 0 && gpio_value[1] == 0)
+    hw_version = 3;
+  else
+    hw_version = 2;
+
+  return hw_version;
+} 
+
 __weak unsigned int lpddr4_mr_read(unsigned int mr_rank, unsigned int mr_addr)
 {
   unsigned int tmp;
@@ -66,19 +97,38 @@ __weak unsigned int lpddr4_mr_read(unsigned int mr_rank, unsigned int mr_addr)
 
 int board_phys_sdram_size(phys_size_t *size)
 {
-  unsigned int mr5, mr6, mr7, mr8;
+  unsigned int hw_version = 3;
+  unsigned int mr0, mr5, mr6, mr7, mr8;
 
+  hw_version = get_hw_version();
+
+  mr0 = lpddr4_mr_read(0xF, 0x0);
   mr5 = lpddr4_mr_read(0xF, 0x5);
   mr6 = lpddr4_mr_read(0xF, 0x6);
   mr7 = lpddr4_mr_read(0xF, 0x7);
   mr8 = lpddr4_mr_read(0xF, 0x8);
+  printf("hw_version=%d, MR0=0x%x, MR5=0x%x, MR6=0x%x, MR7=0x%x, MR8=0x%x\n", hw_version, mr0, mr5, mr6, mr7, mr8);
 
-  if (mr5 == 0xff && mr6 == 0x7 && mr7 == 0x0 && mr8 == 0x10) {
-    *size = (u64)4096 << 20ULL;
-  } else if (mr5 == 0xff && mr6 == 0x7 && mr7 == 0xb8 && mr8 == 0x10) {
-    *size = (u64)1024 << 20ULL;  // CAMBIAR A 2GB
-  } else if (mr5 == 0xff && mr6 == 0x54 && mr7 == 0x1 && mr8 == 0x10) {
-    *size = (u64)1024 << 20ULL;
+  if (hw_version == 2) {
+    if (mr5 == 0xff && mr6 == 0x7 && mr7 == 0x0 && mr8 == 0x10) {
+      *size = (u64)4096 << 20ULL;
+    } else if (mr5 == 0xff && mr6 == 0x7 && mr7 == 0xb8 && mr8 == 0x10) {
+      *size = (u64)1024 << 20ULL;  // CAMBIAR A 2GB
+    } else if (mr5 == 0xff && mr6 == 0x54 && mr7 == 0x1 && mr8 == 0x10) {
+      *size = (u64)1024 << 20ULL;
+    } else {
+      *size = (u64)1024 << 20ULL;
+    }
+  } else if (hw_version == 3) {
+    if (mr0 == 0x39 && mr5 == 0xff && mr6 == 0x07 && mr8 == 0x10) {
+      *size = (u64)4096 << 20ULL;
+    } else if (mr0 == 0xb9 && mr5 == 0xff && mr6 == 0x07 && mr8 == 0x10) {
+      *size = (u64)2048 << 20ULL;
+    } else if (mr0 == 0x98 && mr5 == 0xff && mr6 == 0x03 && mr8 == 0x08) {
+      *size = (u64)1024 << 20ULL;
+    } else {
+      *size = (u64)1024 << 20ULL;
+    }
   } else {
     *size = (u64)1024 << 20ULL;
   }
