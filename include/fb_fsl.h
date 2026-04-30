@@ -109,6 +109,12 @@
 #define FASTBOOT_WV_PROVISION	"provision-wv-keybox"
 #define FASTBOOT_WV_PROVISION_ENC	"provision-wv-keybox-enc"
 #define FASTBOOT_GENERATE_DEK_BLOB	"generate-dek-blob"
+#define FASTBOOT_FIRMWARE_SIGN_KEY      "provision-firmware-sign-key"
+#define FASTBOOT_FIRMWARE_ENCRYPT_KEY   "provision-firmware-encrypt-key"
+#define FASTBOOT_PROVISION_SPL_DEK_BLOB       "provision-spl-dek-blob"
+#define FASTBOOT_PROVISION_BOOTLOADER_DEK_BLOB       "provision-bootloader-dek-blob"
+#define FASTBOOT_GET_SPL_DEK_BLOB           "get-spl-dek-blob"
+#define FASTBOOT_GET_BOOTLOADER_DEK_BLOB           "get-bootloader-dek-blob"
 #endif
 
 #ifdef CONFIG_ANDROID_THINGS_SUPPORT

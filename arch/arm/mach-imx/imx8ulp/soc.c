@@ -157,6 +157,24 @@ static u32 get_cpu_variant_type(u32 type)
 	return type;
 }
 
+static bool is_psw_active_disabled(u32 psw_mask)
+{
+	u32 psw_active = 0xfffff, powersys_otp_valid;
+	int ret;
+
+	ret = fuse_read(3, 5, &powersys_otp_valid);
+	if (!ret && (powersys_otp_valid & 0x8000)) {
+		ret = fuse_read(5, 5, &psw_active);
+		if (ret)
+			psw_active = 0xfffff;
+	}
+
+	if ((psw_active & psw_mask) == psw_mask)
+		return false;
+
+	return true;
+}
+
 u32 get_cpu_rev(void)
 {
 	u32 rev = (gd->arch.soc_rev >> 24) - 0xa0;
@@ -818,6 +836,54 @@ void set_lpav_qos(void)
 	writel(0xf, 0x2e447100);
 }
 
+void set_apd_gpiox_op_range(u32 port, u32 range)
+{
+	switch (port) {
+	case PTE:
+		/* update DGO4 operation range */
+		writel(range, SIM1_BASE_ADDR + 0x24);
+		/* set update bit */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(4));
+		/* polling the ack */
+		while ((readl(SIM1_BASE_ADDR + 0x8) & BIT(12)) == 0)
+			;
+		/* clear update bit */
+		clrbits_le32(SIM1_BASE_ADDR + 0x8, BIT(4));
+		/* clear the ack by set 1 */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(12));
+		break;
+	case PTF:
+		/* update DGO5 operation range */
+		writel(range, SIM1_BASE_ADDR + 0x28);
+		/* set update bit */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(5));
+		/* polling the ack */
+		while ((readl(SIM1_BASE_ADDR + 0x8) & BIT(13)) == 0)
+			;
+		/* clear update bit */
+		clrbits_le32(SIM1_BASE_ADDR + 0x8, BIT(5));
+		/* clear the ack by set 1 */
+		setbits_le32(SIM1_BASE_ADDR + 0x8, BIT(13));
+		break;
+	default:
+		return;
+	};
+}
+
+void set_apd_gpiox_comp_cell(u32 port, bool enable) {
+	switch (port) {
+	case PTD:
+		/* Enable/disable PTD cell compensation */
+		if (enable)
+			setbits_le32(SIM1_BASE_ADDR + 0x48, BIT(15));
+		else
+			clrbits_le32(SIM1_BASE_ADDR + 0x48, BIT(15));
+		break;
+	default:
+		return;
+	};
+}
+
 int arch_cpu_init(void)
 {
 	if (IS_ENABLED(CONFIG_SPL_BUILD)) {
@@ -1034,6 +1100,16 @@ static int disable_pxp_epdc_nodes(void *blob)
 	return delete_fdt_nodes(blob, nodes_path_npu, ARRAY_SIZE(nodes_path_npu));
 }
 
+static int disable_hifi_nodes(void *blob)
+{
+	static const char * const nodes_path_hifi[] = {
+		"/sof-sound-btsco",
+		"/soc@0/dsp@21170000"
+	};
+
+	return delete_fdt_nodes(blob, nodes_path_hifi, ARRAY_SIZE(nodes_path_hifi));
+}
+
 #define MAX_CORE_NUM 2
 static void disable_pmu_cpu_nodes(void *blob, u32 disabled_cores)
 {
@@ -1150,6 +1226,10 @@ skip_upt:
 
 	if (is_imx8ulpd3() || is_imx8ulps3())
 		disable_gpu_nodes(blob);
+
+	/* Check if HIFI4 PS is not allowed to power on */
+	if (is_imx8ulpsc() && is_psw_active_disabled(BIT(8)))
+		disable_hifi_nodes(blob);
 
 	return ft_add_optee_node(blob, bd);
 }

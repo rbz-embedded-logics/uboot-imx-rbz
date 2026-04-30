@@ -5,11 +5,6 @@ config AHAB_BOOT
     help
     This option enables the support for AHAB secure boot.
 
-config IMX9_LOW_DRIVE_MODE
-    bool "Configure to i.MX9 low drive mode"
-    help
-    This option enables the settings for iMX9 low drive mode.
-
 config IMX9
 	bool
 	select HAS_CAAM
@@ -19,7 +14,13 @@ config IMX93
 	bool
 	select IMX9
 	select ARMV8_SPL_EXCEPTION_VECTORS
-	select SYS_FSL_ERRATUM_ESDHC111
+
+config IMX95
+	bool
+	select IMX9
+	select ARMV8_SPL_EXCEPTION_VECTORS
+	select SCMI_FIRMWARE
+	select DM_MAILBOX
 
 config SYS_SOC
 	default "imx9"
@@ -34,6 +35,7 @@ config TARGET_IMX93_14X14_EVK
 
 config TARGET_IMX93_11X11_EVK
 	bool "imx93_11x11_evk"
+	select OF_BOARD_FIXUP
 	select IMX93
 
 config TARGET_IMX93_9X9_QSB
@@ -41,10 +43,29 @@ config TARGET_IMX93_9X9_QSB
 	select IMX93
 	select IMX9_LPDDR4X
 
+config TARGET_IMX91P_11X11_EVK
+	bool "imx91p_11x11_evk"
+	select IMX93
+
+config TARGET_IMX91P_9X9_QSB
+	bool "imx91p_9x9_qsb"
+	select IMX93
+	select IMX9_LPDDR4X
+
+config TARGET_IMX95_19X19_EVK
+	bool "imx95_19x19_evk"
+	select IMX95
+
+config TARGET_TITAN_IMX95_19X19
+	bool "imx95_titan_evk"
+	select IMX95
+
 endchoice
 
 source "board/freescale/imx93_evk/Kconfig"
 source "board/freescale/imx93_qsb/Kconfig"
+source "board/freescale/imx95_evk/Kconfig"
+source "board/toradex/titan-imx95/Kconfig"
 
 endif
 

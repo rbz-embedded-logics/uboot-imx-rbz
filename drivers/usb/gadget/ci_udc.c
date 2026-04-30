@@ -1051,7 +1051,7 @@ static int ci_udc_otg_phy_mode2(void *__iomem phy_base)
 			return USB_INIT_DEVICE;
 		else
 			return USB_INIT_HOST;
-	} else if (is_mx7() || is_imx8mm() || is_imx8mn() || is_imx93()) {
+	} else if (is_mx7() || is_imx8mm() || is_imx8mn() || is_imx93() || is_imx95()) {
 		phy_status = (void __iomem *)(phy_base +
 					      USBNC_PHY_STATUS_OFFSET);
 		val = readl(phy_status);
@@ -1376,7 +1376,7 @@ static int ci_udc_otg_phy_mode(struct udevice *dev)
 			return USB_INIT_DEVICE;
 		else
 			return USB_INIT_HOST;
-	} else if (is_mx7() || is_imx8mm() || is_imx8mn() || is_imx93()) {
+	} else if (is_mx7() || is_imx8mm() || is_imx8mn() || is_imx93() || is_imx95()) {
 		phy_status = (void __iomem *)(phy_base +
 					      USBNC_PHY_STATUS_OFFSET);
 		val = readl(phy_status);
@@ -1419,7 +1419,9 @@ static int ci_udc_otg_probe(struct udevice *dev)
 
 	ehci = (struct usb_ehci *)devfdt_get_addr(&priv->otgdev);
 
-	pinctrl_select_state(&priv->otgdev, "default");
+	ret = pinctrl_select_state(&priv->otgdev, "default");
+	if (ret)
+		printf("Failed to configure default pinctrl\n");
 
 #if defined(CONFIG_MX6)
 	if (usb_fused((u32)ehci)) {

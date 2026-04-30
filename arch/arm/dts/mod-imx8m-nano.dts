@@ -406,7 +406,7 @@
 
 	flash0: mt25qu256aba@0 {
 		reg = <0>;
-		compatible = "jedec,spi-nor";
+		compatible = "jedec,spi-nor", "spi-flash";
 		spi-max-frequency = <80000000>;
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>;

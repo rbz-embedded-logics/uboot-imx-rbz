@@ -49,6 +49,11 @@
 #include <trusty/libtipc.h>
 #endif
 
+#ifdef CONFIG_IMX_SNPS_DDR_PHY_QB_GEN
+#include <asm/arch/ddr.h>
+#include <u-boot/crc.h>
+#endif
+
 #include "fb_fsl_common.h"
 #include "fb_fsl_virtual_ab.h"
 
@@ -210,23 +215,64 @@ static void reboot_fastboot(char *cmd_parameter, char *response)
 }
 #endif
 
-static void upload(char *cmd_parameter, char *response)
-{
-	if (!fastboot_bytes_received || fastboot_bytes_received > (EP_BUFFER_SIZE * 32)) {
-		fastboot_fail("", response);
-		return;
+bool endswith(char* s, char* subs) {
+	if (!s || !subs)
+		return false;
+	uint32_t len = strlen(s);
+	uint32_t sublen = strlen(subs);
+	if (len < sublen) {
+		return false;
 	}
+	if (strncmp(s + len - sublen, subs, sublen)) {
+		return false;
+	}
+	return true;
+}
 
-	printf("Will upload %d bytes.\n", fastboot_bytes_received);
-	snprintf(response, FASTBOOT_RESPONSE_LEN, "DATA%08x", fastboot_bytes_received);
+static void send(char *response, const char *buffer, unsigned int buffer_size)
+{
+	int remaining, size;
+	unsigned int sent = 0;
+
+	printf("Will upload %d bytes.\n", buffer_size);
+	snprintf(response, FASTBOOT_RESPONSE_LEN, "DATA%08x", buffer_size);
 	fastboot_tx_write_more(response);
 
-	fastboot_tx_write((const char *)(fastboot_buf_addr), fastboot_bytes_received);
+	while (sent != buffer_size) {
+		remaining = buffer_size - sent;
+		size = EP_BUFFER_SIZE < remaining ? EP_BUFFER_SIZE : remaining;
+		fastboot_tx_write_more_s(buffer + sent, size);
+		sent += size;
+	}
 
 	snprintf(response,FASTBOOT_RESPONSE_LEN, "OKAY");
 	fastboot_tx_write_more(response);
 
 	fastboot_none_resp(response);
+}
+
+static void upload(char *cmd_parameter, char *response)
+{
+	#if CONFIG_IS_ENABLED(IMX_SNPS_DDR_PHY_QB_GEN)
+	if (endswith(cmd_parameter, "snps-ddr-phy-qb")) {
+		struct ddrphy_qb_state *qb_state;
+	#if CONFIG_IS_ENABLED(IMX93)
+		uint32_t crc;
+	#endif
+		qb_state = (struct ddrphy_qb_state *)CONFIG_SAVED_QB_STATE_BASE;
+	#if CONFIG_IS_ENABLED(IMX93)
+		crc = crc32(0, (void *)&(qb_state->flags), DDRPHY_QB_STATE_SIZE);
+
+		if (crc != qb_state->crc)
+			log_err("DDRPHY TD CRC error SPL->U-Boot: spl=0x%08x, uboot=0x%08x\n",
+				qb_state->crc, crc);
+	#endif
+		send(response, (const char *)qb_state, sizeof(struct ddrphy_qb_state));
+		return;
+	}
+	#endif
+
+	send(response, (const char *)(fastboot_buf_addr), fastboot_bytes_received);
 }
 
 /**
@@ -336,20 +382,6 @@ void fastboot_data_complete(char *response)
 	env_set_hex("filesize", fastboot_bytes_received);
 	env_set_hex("fastboot_bytes", fastboot_bytes_received);
 	fastboot_bytes_expected = 0;
-}
-
-bool endswith(char* s, char* subs) {
-	if (!s || !subs)
-		return false;
-	uint32_t len = strlen(s);
-	uint32_t sublen = strlen(subs);
-	if (len < sublen) {
-		return false;
-	}
-	if (strncmp(s + len - sublen, subs, sublen)) {
-		return false;
-	}
-	return true;
 }
 
 #if defined(CONFIG_FASTBOOT_LOCK)
@@ -694,6 +726,22 @@ static void flashing(char *cmd, char *response)
 			printf("Provision widevine keybox successfully!\n");
 			strcpy(response, "OKAY");
 		}
+	} else if (endswith(cmd, FASTBOOT_FIRMWARE_SIGN_KEY)) {
+		if (hwcrypto_provision_firmware_sign_key(fastboot_buf_addr, fastboot_bytes_received)) {
+			printf("ERROR provision firmware sign key failed!\n");
+			strcpy(response, "FAILInternal error!");
+		} else {
+			printf("Provision firmware sign key successfully!\n");
+			strcpy(response, "OKAY");
+		}
+	} else if (endswith(cmd, FASTBOOT_FIRMWARE_ENCRYPT_KEY)) {
+		if (hwcrypto_provision_firmware_encrypt_key(fastboot_buf_addr, fastboot_bytes_received)) {
+			printf("ERROR provision firmware encrypt key failed!\n");
+			strcpy(response, "FAILInternal error!");
+		} else {
+			printf("Provision firmware encrypt key successfully!\n");
+			strcpy(response, "OKAY");
+		}
 	}
 #ifdef CONFIG_IMX8M
 	else if (endswith(cmd, FASTBOOT_GENERATE_DEK_BLOB)) {
@@ -717,6 +765,39 @@ static void flashing(char *cmd, char *response)
 		}
 	}
 #endif
+	else if (endswith(cmd, FASTBOOT_PROVISION_SPL_DEK_BLOB)) {
+		if (hwcrypto_provision_dek_blob(fastboot_buf_addr, &fastboot_bytes_received, SPL_DEK_BLOB)) {
+			printf("ERROR provision spl_dek_blob failed!\n");
+			strcpy(response, "FAILprovision spl_dek_blob failed!");
+		} else {
+			printf("Provision spl_dek_blob successfully!\n");
+			strcpy(response, "OKAY");
+		}
+	} else if (endswith(cmd, FASTBOOT_PROVISION_BOOTLOADER_DEK_BLOB)) {
+		if (hwcrypto_provision_dek_blob(fastboot_buf_addr, &fastboot_bytes_received, BOOTLOADER_DEK_BLOB)) {
+			printf("ERROR provision bootloader_dek_blob failed!\n");
+			strcpy(response, "FAILprovision bootloader_dek_blob failed!");
+		} else {
+			printf("Provision bootloader_dek_blob successfully!\n");
+			strcpy(response, "OKAY");
+		}
+	} else if (endswith(cmd, FASTBOOT_GET_SPL_DEK_BLOB)) {
+		if (hwcrypto_get_dek_blob(fastboot_buf_addr, &fastboot_bytes_received, SPL_DEK_BLOB)) {
+			printf("ERROR get spl_dek_blob failed!\n");
+			strcpy(response, "FAILget spl_dek_blob failed!");
+		} else {
+			printf("Get spl_dek_blob successfully!\n");
+			strcpy(response, "OKAY");
+		}
+	} else if (endswith(cmd, FASTBOOT_GET_BOOTLOADER_DEK_BLOB)) {
+		if (hwcrypto_get_dek_blob(fastboot_buf_addr, &fastboot_bytes_received, BOOTLOADER_DEK_BLOB)) {
+			printf("ERROR get bootloader_dek_blob failed!\n");
+			strcpy(response, "FAILget bootloader_dek_blob failed!");
+		} else {
+			printf("Get bootloader_dek_blob successfully!\n");
+			strcpy(response, "OKAY");
+		}
+	}
 #ifdef CONFIG_ID_ATTESTATION
 	else if (endswith(cmd, FASTBOOT_SET_ATTESTATION_ID)) {
 		if (trusty_set_attestation_id()) {

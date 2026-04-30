@@ -31,6 +31,7 @@
 #include <asm/arch/ddr.h>
 #include <power/pmic.h>
 #include <power/pca9450.h>
+#include <power/pf0900.h>
 #include <asm/arch/trdc.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -64,26 +65,100 @@ void spl_board_init(void)
 		printf("Fail to start RNG: %d\n", ret);
 }
 
+extern struct dram_timing_info dram_timing_1866mts;
 void spl_dram_init(void)
 {
-	ddr_init(&dram_timing);
+	struct dram_timing_info *ptiming = &dram_timing;
+#if IS_ENABLED(CONFIG_IMX93_EVK_LPDDR4X)
+	if (is_voltage_mode(VOLT_LOW_DRIVE))
+		ptiming = &dram_timing_1866mts;
+#endif
+
+	printf("DDR: %uMTS\n", ptiming->fsp_msg[0].drate);
+	ddr_init(ptiming);
 }
+
+#if CONFIG_IS_ENABLED(DM_PMIC_PF0900)
+int power_init_board(void)
+{
+	struct udevice *dev;
+	int ret;
+	unsigned int sw_val;
+
+	ret = pmic_get("pmic@8", &dev);
+	if (ret != 0) {
+		puts("ERROR: Get PMIC PF0900 failed!\n");
+		return ret;
+	}
+	puts("PMIC: PF0900\n");
+	if (is_voltage_mode(VOLT_LOW_DRIVE)) {
+		sw_val = 0x39; /* 0.8v for Low drive mode */
+		printf("PMIC: Low Drive Voltage Mode\n");
+	} else if (is_voltage_mode(VOLT_NOMINAL_DRIVE)) {
+		sw_val = 0x41; /* 0.85v for Nominal drive mode */
+		printf("PMIC: Nominal Voltage Mode\n");
+	} else {
+		sw_val = 0x49; /* 0.9v for Over drive mode */
+		printf("PMIC: Over Drive Voltage Mode\n");
+	}
+
+	ret = pmic_reg_read(dev, PF0900_REG_SW1_VRUN);
+	if (ret < 0)
+		return ret;
+
+	sw_val = (sw_val & SW_VRUN_MASK) | (ret & ~SW_VRUN_MASK);
+	ret = pmic_reg_write(dev, PF0900_REG_SW1_VRUN, sw_val);
+	if (ret != 0)
+		return ret;
+
+	ret = pmic_reg_read(dev, PF0900_REG_SW1_VSTBY);
+	if (ret < 0)
+		return ret;
+
+	/* set standby voltage to 0.65v */
+	sw_val = 0x21;
+	sw_val = (sw_val & SW_STBY_MASK) | (ret & ~SW_STBY_MASK);
+	ret = pmic_reg_write(dev, PF0900_REG_SW1_VSTBY, sw_val);
+	if (ret != 0)
+		return ret;
+
+	ret = pmic_reg_read(dev, PF0900_REG_GPO_CTRL);
+	if (ret < 0)
+		return ret;
+
+	/* I2C_LT_EN*/
+	sw_val = 0x40;
+	sw_val = (sw_val & GPO3_RUN_MASK) | (ret & ~GPO3_RUN_MASK);
+	ret = pmic_reg_write(dev, PF0900_REG_GPO_CTRL, sw_val);
+	if (ret != 0)
+		return ret;
+
+	ret = pmic_reg_read(dev, PF0900_REG_SYS_CFG1);
+	if (ret < 0)
+		return ret;
+	/*disable stby xrst*/
+	sw_val = 0x0;
+	sw_val = (sw_val & XRST_STBY_EN_MASK) | (ret & ~XRST_STBY_EN_MASK);
+	ret = pmic_reg_write(dev, PF0900_REG_SYS_CFG1, sw_val);
+	if (ret != 0)
+		return ret;
+	return 0;
+}
+#endif
 
 #if CONFIG_IS_ENABLED(DM_PMIC_PCA9450)
 int power_init_board(void)
 {
 	struct udevice *dev;
 	int ret;
-	unsigned int val = 0;
+	unsigned int val = 0, buck_val;
 
 	ret = pmic_get("pmic@25", &dev);
-	if (ret == -ENODEV) {
-		puts("No pca9450@25\n");
-		return 0;
-	}
-	if (ret != 0)
+	if (ret != 0) {
+		puts("ERROR: Get PMIC PCA9451A failed!\n");
 		return ret;
-
+	}
+	puts("PMIC: PCA9451A\n");
 	/* BUCKxOUT_DVS0/1 control BUCK123 output */
 	pmic_reg_write(dev, PCA9450_BUCK123_DVS, 0x29);
 
@@ -96,26 +171,28 @@ int power_init_board(void)
 	else
 		val = ret;
 
-	if (IS_ENABLED(CONFIG_IMX9_LOW_DRIVE_MODE)){
-		/* 0.8v for Low drive mode
-		 */
-		if (val & PCA9450_REG_PWRCTRL_TOFF_DEB) {
-			pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, 0x0c);
-			pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, 0x0c);
-		} else {
-			pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, 0x10);
-			pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, 0x10);
-		}
+	if (is_voltage_mode(VOLT_LOW_DRIVE)) {
+		buck_val = 0x0c; /* 0.8v for Low drive mode */
+		printf("PMIC: Low Drive Voltage Mode\n");
+	} else if (is_voltage_mode(VOLT_NOMINAL_DRIVE)) {
+		buck_val = 0x10; /* 0.85v for Nominal drive mode */
+		printf("PMIC: Nominal Voltage Mode\n");
 	} else {
-		/* 0.9v for Over drive mode
-		 */
-		if (val & PCA9450_REG_PWRCTRL_TOFF_DEB) {
-			pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, 0x14);
-			pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, 0x14);
-		} else {
-			pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, 0x18);
-			pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, 0x18);
-		}
+		buck_val = 0x14; /* 0.9v for Over drive mode */
+		printf("PMIC: Over Drive Voltage Mode\n");
+	}
+
+	if (val & PCA9450_REG_PWRCTRL_TOFF_DEB) {
+		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, buck_val);
+		pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, buck_val);
+	} else {
+		pmic_reg_write(dev, PCA9450_BUCK1OUT_DVS0, buck_val + 0x4);
+		pmic_reg_write(dev, PCA9450_BUCK3OUT_DVS0, buck_val + 0x4);
+	}
+
+	if (IS_ENABLED(CONFIG_IMX93_EVK_LPDDR4)) {
+		/* Set VDDQ to 1.1V from buck2 */
+		pmic_reg_write(dev, PCA9450_BUCK2OUT_DVS0, 0x28);
 	}
 
 	/* set standby voltage to 0.65v */
@@ -156,9 +233,11 @@ void board_init_f(ulong dummy)
 		printf("LC: 0x%x\n", gd->arch.lifecycle);
 	}
 
+	clock_init_late();
+
 	power_init_board();
 
-	if (!IS_ENABLED(CONFIG_IMX9_LOW_DRIVE_MODE))
+	if (!is_voltage_mode(VOLT_LOW_DRIVE))
 		set_arm_core_max_clk();
 
 	/* Init power of mix */

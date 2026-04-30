@@ -225,30 +225,33 @@ int hwcrypto_gen_blob(uint32_t plain_pa,
     return rc;
 }
 
-int hwcrypto_gen_rng(uint32_t buf, uint32_t len)
+int hwcrypto_gen_rng(uint8_t *buf, uint32_t len)
 {
-    hwcrypto_rng_msg req;
-    unsigned long start, end;
+    hwcrypto_rng_req req;
+    uint8_t *resp = NULL;
+    int resp_len;
+    int rc = 0;
 
-    /* check the address */
-    if (buf == 0)
-        return TRUSTY_ERR_INVALID_ARGS;
-    /* fill the request buffer */
-    req.buf = buf;
     req.len = len;
+    resp = trusty_calloc(len, 1);
+    if (!resp) {
+        trusty_error("Failed to allocate memory!\n");
+        return TRUSTY_ERR_NO_MEMORY;
+    }
+    resp_len = len;
 
-    /* invalidate dcache for output buffer */
-    start = (unsigned long)buf & ~(ARCH_DMA_MINALIGN - 1);
-    end   = ALIGN((unsigned long)buf + len, ARCH_DMA_MINALIGN);
-    invalidate_dcache_range(start, end);
+    rc = hwcrypto_do_tipc(HWCRYPTO_GEN_RNG, (void*)&req, sizeof(req), resp, &resp_len);
+    if (rc && (resp_len != len)) {
+        trusty_error("Failed to generate RNG!\n");
+        goto exit;
+    }
+    memcpy(buf, resp, resp_len);
+    rc = TRUSTY_ERR_NONE;
 
-    int rc = hwcrypto_do_tipc(HWCRYPTO_GEN_RNG, (void*)&req,
-                              sizeof(req), NULL, 0);
+exit:
+    if (resp)
+        free(resp);
 
-    /* invalidate the dcache again before read to avoid coherency
-     * problem caused by speculative memory access by the CPU.
-     */
-    invalidate_dcache_range(start, end);
     return rc;
 }
 
@@ -426,6 +429,152 @@ int hwcrypto_commit_emmc_cid(void)
 
     if (req)
         trusty_free(req);
+
+    return rc;
+}
+
+int hwcrypto_provision_firmware_sign_key(const char *data, uint32_t data_size)
+{
+    uint8_t *req = NULL, *tmp;
+    /* sanity check */
+    if (!data || !data_size)
+        return TRUSTY_ERR_INVALID_ARGS;
+
+    /* serialize the request */
+    req = trusty_calloc(data_size + sizeof(data_size), 1);
+    if (!req) {
+        return TRUSTY_ERR_NO_MEMORY;
+    }
+    tmp = append_sized_buf_to_buf(req, (uint8_t *)data, data_size);
+
+    int rc = hwcrypto_do_tipc(HWCRYPTO_PROVISION_FIRMWARE_SIGN_KEY, (void*)req,
+                              data_size + sizeof(data_size), NULL, 0);
+    if (req)
+        trusty_free(req);
+
+    return rc;
+}
+
+int hwcrypto_provision_dek_blob(char *data, uint32_t *data_size, enum dek_blob_part part)
+{
+    uint8_t *req = NULL;
+    uint32_t tmp = 0;
+    int rc = 0;
+
+    /* sanity check */
+    tmp = *data_size - CAAM_KB_HEADER_LEN - HAB_DEK_BLOB_HEADER_LEN;
+    if (!data || ((tmp != 16) && (tmp != 24) && (tmp != 32))) {
+        trusty_error("Wrong input parameters!\n");
+        return TRUSTY_ERR_INVALID_ARGS;
+    }
+
+    /* serialize the request */
+    req = trusty_calloc(*data_size + sizeof(*data_size), 1);
+    if (!req) {
+        return TRUSTY_ERR_NO_MEMORY;
+    }
+    append_sized_buf_to_buf(req, (uint8_t *)data, *data_size);
+
+    switch (part) {
+    case SPL_DEK_BLOB:
+        rc = hwcrypto_do_tipc(HWCRYPTO_PROVISION_SPL_DEK_BLOB, (void*)req,
+                            *data_size + sizeof(*data_size), NULL, 0);
+        break;
+    case BOOTLOADER_DEK_BLOB:
+        rc = hwcrypto_do_tipc(HWCRYPTO_PROVISION_BOOTLOADER_DEK_BLOB, (void*)req,
+                            *data_size + sizeof(*data_size), NULL, 0);
+        break;
+    default:
+        trusty_error("Wrong input parameters!\n");
+        rc = TRUSTY_ERR_INVALID_ARGS;
+    }
+
+    if (req)
+        trusty_free(req);
+
+    return rc;
+}
+
+int hwcrypto_provision_firmware_encrypt_key(const char *data, uint32_t data_size)
+{
+    uint8_t *req = NULL, *tmp;
+    /* sanity check */
+    if (!data || !data_size)
+        return TRUSTY_ERR_INVALID_ARGS;
+
+    /* serialize the request */
+    req = trusty_calloc(data_size + sizeof(data_size), 1);
+    if (!req) {
+        return TRUSTY_ERR_NO_MEMORY;
+    }
+    tmp = append_sized_buf_to_buf(req, (uint8_t *)data, data_size);
+
+    int rc = hwcrypto_do_tipc(HWCRYPTO_PROVISION_FIRMWARE_ENCRYPT_KEY, (void*)req,
+                              data_size + sizeof(data_size), NULL, 0);
+
+    if (req)
+        trusty_free(req);
+
+    return rc;
+}
+
+int hwcrypto_get_dek_blob(char *data, uint32_t *data_size, enum dek_blob_part part)
+{
+    uint32_t dek_blob_size = 0, tmp = 0;
+    uint8_t *resp = NULL;
+    int rc = 0;
+
+    tmp = sizeof(uint32_t);
+
+    switch (part) {
+    case SPL_DEK_BLOB:
+        rc = hwcrypto_do_tipc(HWCRYPTO_GET_SPL_DEK_BLOB_SIZE, NULL,
+                              0, &dek_blob_size, &tmp);
+        break;
+    case BOOTLOADER_DEK_BLOB:
+        rc = hwcrypto_do_tipc(HWCRYPTO_GET_BOOTLOADER_DEK_BLOB_SIZE, NULL,
+                              0, &dek_blob_size, &tmp);
+        break;
+    default:
+        trusty_error("Wrong input parameters!\n");
+        return TRUSTY_ERR_INVALID_ARGS;
+    }
+
+    if(rc) {
+        trusty_error("Fail to get the dek-blob size!\n");
+        goto exit;
+    }
+
+    resp = trusty_calloc(dek_blob_size, 1);
+    if (!resp){
+        trusty_error("Memory allocation failed!\n");
+        goto exit;
+    }
+
+    switch (part) {
+    case SPL_DEK_BLOB:
+        rc = hwcrypto_do_tipc(HWCRYPTO_GET_SPL_DEK_BLOB, NULL,
+                              0, resp, &dek_blob_size);
+        break;
+    case BOOTLOADER_DEK_BLOB:
+        rc = hwcrypto_do_tipc(HWCRYPTO_GET_BOOTLOADER_DEK_BLOB, NULL,
+                              0, resp, &dek_blob_size);
+        break;
+    default:
+        trusty_error("Wrong input parameters!\n");
+        goto exit;
+    }
+
+    if (!rc) {
+        memcpy(data, resp, dek_blob_size);
+        *data_size = dek_blob_size;
+    } else {
+        trusty_error("Fail to get the dek-blob!\n");
+    }
+
+exit:
+    if (resp)
+        trusty_free(resp);
 
     return rc;
 }

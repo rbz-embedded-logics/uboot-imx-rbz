@@ -449,31 +449,31 @@ config TARGET_LIBREM5
 	select IMX8M_LPDDR4
 
 config TARGET_MOD_IMX8M_NANO
-	bool "RBZ MOD_IMX8M_NANO Board"
-	select IMX8MN
-	select SUPPORT_SPL
-	select IMX8M_LPDDR4
-    select FSL_CAAM
-    select FSL_BLOB
-    select SPL_CRYPTO if SPL
+  bool "RBZ MOD_IMX8M_NANO Board"
+  select IMX8MN
+  select SUPORT_SPL
+  select IMX8M_LPDDR4
+  select FSL_CAAM
+  select FSL_BLOB
+  select SPL_CRYPTO if SPL
 
 config TARGET_MOD_IMX8M_MINI
-	bool "RBZ MOD_IMX8M_MINI Board"
-	select IMX8MM
-	select SUPPORT_SPL
-	select IMX8M_LPDDR4
-    select FSL_CAAM
-    select FSL_BLOB
-    select SPL_CRYPTO if SPL
+  bool "RBZ MOD_IMX8M_MINI Board"
+  select IMX8MM
+  select SUPORT_SPL
+  select IMX8M_LPDDR4
+  select FSL_CAAM
+  select FSL_BLOB
+  select SPL_CRYPTO if SPL
 
 config TARGET_MOD_IMX8M_PLUS
-	bool "RBZ MOD_IMX8M_PLUS Board"
-	select IMX8MP
-	select SUPPORT_SPL
-	select IMX8M_LPDDR4
-    select FSL_CAAM
-    select FSL_BLOB
-    select SPL_CRYPTO if SPL
+  bool "RBZ MOD_IMX8M_PLUS Board"
+  select IMX8MP
+  select SUPORT_SPL
+  select IMX8M_LPDDR4
+  select FSL_CAAM
+  select FSL_BLOB
+  select SPL_CRYPTO if SPL
 
 endchoice
 

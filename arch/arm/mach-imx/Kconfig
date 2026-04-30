@@ -84,6 +84,14 @@ config IMX_HAB
 	  This option enables the support for secure boot (HAB).
 	  See doc/imx/habv4/* for more details.
 
+config IMX_SPL_FIT_FDT_SIGNATURE
+	bool "Enable to verify signature of FIT FDT"
+	depends on IMX_HAB
+	depends on ARCH_IMX8M
+	help
+	  Enable SPL to verify signature of FIT FDT during FIT loading.
+	  This needs additional signing to FIT FDT part.
+
 config CSF_SIZE
 	hex "Maximum size for Command Sequence File (CSF) binary"
 	depends on IMX_HAB
@@ -118,6 +126,14 @@ config CMD_DEKBLOB
 	  Freescale secure boot mechanism. This command encapsulates and
 	  creates a blob of data. See also CMD_BLOB and doc/imx/habv4/* for
 	  more information.
+
+config TARGET_PRODUCT_NAME
+	string "Target product name"
+	default "NXP i.MX"
+
+config TARGET_PRODUCT_VARIANT
+	string "Target product variant"
+	default "NXP i.MX"
 
 config IMX_CAAM_DEK_ENCAP
 	select FSL_BLOB
@@ -180,6 +196,14 @@ config CMD_QSPIHDR
 	  Boot from Q(F)SPI need a boot config header, this command can
 	  help to check if header already exists or add one if not.
 
+config CMD_FSPINAND
+	bool "FSPINAND Boot Control Block(BCB) command"
+	depends on MTD
+	default y
+	help
+	  Boot from FSPI NAND need extra boot control Blocks which contains
+	  both Firmware Configuration Block(FCB), Discovered Bad Block Table(DBBT).
+
 config FSL_MFGPROT
 	bool "Support the 'mfgprot' command"
 	depends on IMX_HAB || AHAB_BOOT
@@ -238,7 +262,8 @@ config DDRMC_VF610_CALIBRATION
 	  the ddrmc_cr_setting on relevant board file.
 
 config IMX8_ROMAPI
-	def_bool y
+	bool "Enable i.MX ROMAPI"
+	default y
 	depends on IMX8MN || IMX8MP || IMX8ULP || IMX9
 
 config SPL_IMX_ROMAPI_LOADADDR
@@ -296,6 +321,7 @@ config ANDROID_SUPPORT
 	select SUPPORT_RAW_INITRD
 	select LIBAVB
 	select AVB_SUPPORT
+	imply IMX_SPL_FIT_FDT_SIGNATURE
 
 config ANDROID_AUTO_SUPPORT
 	bool "Android Automotive features support"
@@ -405,6 +431,21 @@ config SECURE_UNLOCK
 config IMX_MATTER_TRUSTY
 	bool "Enable Trusty OS feature for Matter"
 	depends on IMX_TRUSTY_OS
+	default n
+
+config AUTO_SET_RPMB_KEY
+	bool "Set RPMB key automatically"
+	depends on IMX_TRUSTY_OS
+	help
+	  Automatically set the rpmb key which is derived from the hardware
+	  unique key in Trusty OS.
+
+config VPU_SECURE_HEAP
+	bool "Memory need by WIDEVINE_L1"
+	depends on IMX_TRUSTY_OS && (IMX8QM)
+	help
+	  if enable widevine L1 on imx8qm, need to pass secure memory and vpu memory
+	  to linux. It is only used by imx8qm.
 	default n
 
 endmenu

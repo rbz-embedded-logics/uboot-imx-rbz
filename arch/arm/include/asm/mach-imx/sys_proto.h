@@ -2,7 +2,7 @@
 /*
  * (C) Copyright 2009
  * Stefano Babic, DENX Software Engineering, sbabic@denx.de.
- * Copyright 2018-2020 NXP
+ * Copyright 2018-2023 NXP
  */
 
 #ifndef _SYS_PROTO_H_
@@ -97,7 +97,9 @@ struct bd_info;
 
 #define is_imx93() (is_cpu_type(MXC_CPU_IMX93) || is_cpu_type(MXC_CPU_IMX9331) || \
 	is_cpu_type(MXC_CPU_IMX9332) || is_cpu_type(MXC_CPU_IMX9351) || is_cpu_type(MXC_CPU_IMX9322) || \
-	is_cpu_type(MXC_CPU_IMX9321) || is_cpu_type(MXC_CPU_IMX9312) || is_cpu_type(MXC_CPU_IMX9311))
+	is_cpu_type(MXC_CPU_IMX9321) || is_cpu_type(MXC_CPU_IMX9312) || is_cpu_type(MXC_CPU_IMX9311) || \
+	is_cpu_type(MXC_CPU_IMX9302) || is_cpu_type(MXC_CPU_IMX9301) || \
+	is_cpu_type(MXC_CPU_IMX91P3) || is_cpu_type(MXC_CPU_IMX91P1) || is_cpu_type(MXC_CPU_IMX91P0))
 #define is_imx9351() (is_cpu_type(MXC_CPU_IMX9351))
 #define is_imx9332() (is_cpu_type(MXC_CPU_IMX9332))
 #define is_imx9331() (is_cpu_type(MXC_CPU_IMX9331))
@@ -105,6 +107,13 @@ struct bd_info;
 #define is_imx9321() (is_cpu_type(MXC_CPU_IMX9321))
 #define is_imx9312() (is_cpu_type(MXC_CPU_IMX9312))
 #define is_imx9311() (is_cpu_type(MXC_CPU_IMX9311))
+#define is_imx9302() (is_cpu_type(MXC_CPU_IMX9302))
+#define is_imx9301() (is_cpu_type(MXC_CPU_IMX9301))
+#define is_imx91p3() (is_cpu_type(MXC_CPU_IMX91P3))
+#define is_imx91p1() (is_cpu_type(MXC_CPU_IMX91P1))
+#define is_imx91p0() (is_cpu_type(MXC_CPU_IMX91P0))
+
+#define is_imx95() (is_cpu_type(MXC_CPU_IMX95))
 
 #define is_imxrt1020() (is_cpu_type(MXC_CPU_IMXRT1020))
 #define is_imxrt1050() (is_cpu_type(MXC_CPU_IMXRT1050))
@@ -190,6 +199,7 @@ enum boot_dev_type_e {
 	BT_DEV_TYPE_NAND = 3,
 	BT_DEV_TYPE_FLEXSPINOR = 4,
 	BT_DEV_TYPE_SPI_NOR = 6,
+	BT_DEV_TYPE_FLEXSPINAND = 8,
 
 	BT_DEV_TYPE_USB = 0xE,
 	BT_DEV_TYPE_MEM_DEV = 0xF,
@@ -216,11 +226,49 @@ enum boot_stage_type {
 extern struct rom_api *g_rom_api;
 extern unsigned long rom_pointer[];
 
-ulong spl_romapi_raw_seekable_read(u32 offset, u32 size, void *buf);
-ulong spl_romapi_get_uboot_base(u32 image_offset, u32 rom_bt_dev);
+ulong spl_romapi_read(u32 offset, u32 size, void *buf);
+ulong spl_romapi_get_uboot_base(u32 image_offset, u32 rom_bt_dev, u32 pagesize);
 
 u32 rom_api_download_image(u8 *dest, u32 offset, u32 size);
 u32 rom_api_query_boot_infor(u32 info_type, u32 *info);
+
+#ifdef CONFIG_SCMI_FIRMWARE
+typedef struct rom_passover
+{
+    uint16_t tag;                   //!< Tag
+    uint8_t  len;                   //!< Fixed value of 0x80
+    uint8_t  ver;                   //!< Version
+    uint32_t boot_mode;             //!< Boot mode
+    uint32_t card_addr_mode;        //!< SD card address mode
+    uint32_t bad_blks_of_img_set0;  //!< NAND bad block count skipped 1
+    uint32_t ap_mu_id;              //!< AP MU ID
+    uint32_t bad_blks_of_img_set1;  //!< NAND bad block count skipped 1
+    uint8_t  boot_stage;            //!< Boot stage
+    uint8_t  img_set_sel;           //!< Image set booted from
+    uint8_t  rsv0[2];               //!< Reserved
+    uint32_t img_set_end;           //!< Offset of Image End
+    uint32_t rom_version;           //!< ROM version
+    uint8_t  boot_dev_state;        //!< Boot device state
+    uint8_t  boot_dev_inst;         //!< Boot device type
+    uint8_t  boot_dev_type;         //!< Boot device instance
+    uint8_t  rsv1;                  //!< Reserved
+    uint32_t dev_page_size;         //!< Boot device page size
+    uint32_t cnt_header_ofs;        //!< Container header offset
+    uint32_t img_ofs;               //!< Image offset
+}  __attribute__ ((packed)) rom_passover_t;
+
+/**
+ * struct scmi_rom_passover_out - Response payload for ROM_PASSOVER_GET command
+ * @status:	SCMI clock ID
+ * @attributes:	Attributes of the targets clock state
+ */
+struct scmi_rom_passover_get_out {
+	u32 status;
+	u32 numPassover;
+	u32 passover[(sizeof(rom_passover_t) + 8) / 4];
+};
+
+#endif
 
 /* For i.MX ULP */
 #define BT0CFG_LPBOOT_MASK	0x1
