@@ -71,7 +71,6 @@
 #define GLOBAL_TIMER_BASE_ADDR          (ARM_PERIPHBASE + 0x0200)
 #define PRIVATE_TIMERS_WD_BASE_ADDR     (ARM_PERIPHBASE + 0x0600)
 
-
 /* Defines for Blocks connected via AIPS (SkyBlue) */
 #define AIPS_TZ1_BASE_ADDR              AIPS1_ARB_BASE_ADDR
 #define AIPS_TZ2_BASE_ADDR              AIPS2_ARB_BASE_ADDR
@@ -219,13 +218,12 @@
 
 #define FEC_QUIRK_ENET_MAC
 #define SNVS_LPGPR	0x68
-#define CONFIG_SYS_FSL_SEC_OFFSET       0
-#define CONFIG_SYS_FSL_SEC_ADDR         (CAAM_IPS_BASE_ADDR + \
-					 CONFIG_SYS_FSL_SEC_OFFSET)
-#define CONFIG_SYS_FSL_JR0_OFFSET       0x1000
-#define CONFIG_SYS_FSL_JR0_ADDR         (CONFIG_SYS_FSL_SEC_ADDR + \
-					 CONFIG_SYS_FSL_JR0_OFFSET)
-#define CONFIG_SYS_FSL_MAX_NUM_OF_SEC   1
+#define CFG_SYS_FSL_SEC_OFFSET       0
+#define CFG_SYS_FSL_SEC_ADDR         (CAAM_IPS_BASE_ADDR + \
+					 CFG_SYS_FSL_SEC_OFFSET)
+#define CFG_SYS_FSL_JR0_OFFSET       0x1000
+#define CFG_SYS_FSL_JR0_ADDR         (CFG_SYS_FSL_SEC_ADDR + \
+					 CFG_SYS_FSL_JR0_OFFSET)
 #if !(defined(__KERNEL_STRICT_NAMES) || defined(__ASSEMBLY__))
 #include <asm/mach-imx/regs-lcdif.h>
 #include <asm/types.h>
@@ -1167,7 +1165,6 @@ struct rdc_sema_regs {
 #define	LCDIF_VDCTRL4_SYNC_SIGNALS_ON				(1 << 18)
 #define	LCDIF_VDCTRL4_DOTCLK_H_VALID_DATA_CNT_MASK		0x3ffff
 #define	LCDIF_VDCTRL4_DOTCLK_H_VALID_DATA_CNT_OFFSET		0
-
 
 extern void check_cpu_temperature(void);
 

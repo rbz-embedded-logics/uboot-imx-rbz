@@ -4,7 +4,6 @@
  * Lukasz Majewski, DENX Software Engineering, lukma@denx.de
  */
 
-#include <common.h>
 #include <clk-uclass.h>
 #include <dm.h>
 #include <log.h>
@@ -14,79 +13,22 @@
 
 #include "clk.h"
 
-static int imx6q_check_id(ulong id)
+static int imx6q_clk_request(struct clk *clk)
 {
-	if (id < IMX6QDL_CLK_DUMMY || id >= IMX6QDL_CLK_END) {
-		printf("%s: Invalid clk ID #%lu\n", __func__, id);
+	if (clk->id < IMX6QDL_CLK_DUMMY || clk->id >= IMX6QDL_CLK_END) {
+		printf("%s: Invalid clk ID #%lu\n", __func__, clk->id);
 		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static ulong imx6q_clk_get_rate(struct clk *clk)
-{
-	struct clk *c;
-	int ret;
-
-	debug("%s(#%lu)\n", __func__, clk->id);
-
-	ret = imx6q_check_id(clk->id);
-	if (ret)
-		return ret;
-
-	ret = clk_get_by_id(clk->id, &c);
-	if (ret)
-		return ret;
-
-	return clk_get_rate(c);
-}
-
-static ulong imx6q_clk_set_rate(struct clk *clk, unsigned long rate)
-{
-	debug("%s(#%lu), rate: %lu\n", __func__, clk->id, rate);
-
-	return rate;
-}
-
-static int __imx6q_clk_enable(struct clk *clk, bool enable)
-{
-	struct clk *c;
-	int ret = 0;
-
-	debug("%s(#%lu) en: %d\n", __func__, clk->id, enable);
-
-	ret = imx6q_check_id(clk->id);
-	if (ret)
-		return ret;
-
-	ret = clk_get_by_id(clk->id, &c);
-	if (ret)
-		return ret;
-
-	if (enable)
-		ret = clk_enable(c);
-	else
-		ret = clk_disable(c);
-
-	return ret;
-}
-
-static int imx6q_clk_disable(struct clk *clk)
-{
-	return __imx6q_clk_enable(clk, 0);
-}
-
-static int imx6q_clk_enable(struct clk *clk)
-{
-	return __imx6q_clk_enable(clk, 1);
-}
-
 static struct clk_ops imx6q_clk_ops = {
-	.set_rate = imx6q_clk_set_rate,
-	.get_rate = imx6q_clk_get_rate,
-	.enable = imx6q_clk_enable,
-	.disable = imx6q_clk_disable,
+	.request = imx6q_clk_request,
+	.set_rate = ccf_clk_set_rate,
+	.get_rate = ccf_clk_get_rate,
+	.enable = ccf_clk_enable,
+	.disable = ccf_clk_disable,
 };
 
 static const char *const usdhc_sels[] = { "pll2_pfd2_396m", "pll2_pfd0_352m", };
@@ -186,6 +128,10 @@ static int imx6q_clk_probe(struct udevice *dev)
 	       imx_clk_gate2("i2c1", "ipg_per", base + 0x70, 6));
 	clk_dm(IMX6QDL_CLK_I2C2,
 	       imx_clk_gate2("i2c2", "ipg_per", base + 0x70, 8));
+	clk_dm(IMX6QDL_CLK_I2C3,
+	       imx_clk_gate2("i2c3", "ipg_per", base + 0x70, 10));
+	clk_dm(IMX6QDL_CLK_PWM1,
+	       imx_clk_gate2("pwm1", "ipg_per", base + 0x78, 16));
 
 	clk_dm(IMX6QDL_CLK_ENET, imx_clk_gate2("enet", "ipg", base + 0x6c, 10));
 	clk_dm(IMX6QDL_CLK_ENET_REF,

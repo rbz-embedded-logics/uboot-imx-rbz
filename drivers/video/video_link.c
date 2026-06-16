@@ -4,7 +4,6 @@
  *
  */
 
-#include <common.h>
 #include <command.h>
 #include <linux/errno.h>
 
@@ -28,6 +27,7 @@ struct of_endpoint {
 
 struct video_link {
 	struct udevice *link_devs[MAX_LINK_DEVICES];
+	ofnode link_eps[MAX_LINK_DEVICES];
 	int dev_num;
 };
 
@@ -36,6 +36,7 @@ struct video_link temp_stack;
 ulong video_links_num = 0;
 ulong curr_video_link = 0;
 bool video_off = false;
+bool video_retain = false;
 
 ofnode ofnode_get_child_by_name(ofnode parent, const char *name)
 {
@@ -229,7 +230,7 @@ int find_device_by_ofnode(ofnode node, struct udevice **pdev)
 {
 	int ret;
 
-	if (!ofnode_is_available(node))
+	if (!ofnode_is_enabled(node))
 		return -2;
 
 	ret = uclass_find_device_by_ofnode(UCLASS_DISPLAY, node, pdev);
@@ -251,10 +252,11 @@ int find_device_by_ofnode(ofnode node, struct udevice **pdev)
 	return -1;
 }
 
-static void video_link_stack_push(struct udevice *dev)
+static void video_link_stack_push(struct udevice *dev, ofnode link_endpoint)
 {
 	if (temp_stack.dev_num < MAX_LINK_DEVICES) {
 		temp_stack.link_devs[temp_stack.dev_num] = dev;
+		temp_stack.link_eps[temp_stack.dev_num] = link_endpoint;
 		temp_stack.dev_num++;
 	}
 }
@@ -262,13 +264,35 @@ static void video_link_stack_push(struct udevice *dev)
 static void video_link_stack_pop(void)
 {
 	if (temp_stack.dev_num > 0) {
-		temp_stack.link_devs[temp_stack.dev_num] = NULL;
+		temp_stack.link_devs[temp_stack.dev_num - 1] = NULL;
+		temp_stack.link_eps[temp_stack.dev_num - 1] = ofnode_null();
 		temp_stack.dev_num--;
 	}
 }
 
+static bool video_link_cmp(struct video_link *linka, struct video_link *linkb)
+{
+	int i;
+	if (linka->dev_num != linkb->dev_num)
+		return false;
+
+	for (i = 0; i < linka->dev_num; i++) {
+		if (linka->link_devs[i] != linkb->link_devs[i])
+			return false;
+	}
+
+	return true;
+}
+
 static int duplicate_video_link(void)
 {
+	ulong i;
+
+	for (i = 0; i < video_links_num; i++){
+		if (video_link_cmp(&video_links[i], &temp_stack))
+			return 0;
+	}
+
 	if (video_links_num < MAX_LINKS) {
 		video_links[video_links_num] = temp_stack;
 		video_links_num++;
@@ -281,7 +305,8 @@ static int duplicate_video_link(void)
 	return -ENODEV;
 }
 
-static void video_link_add_node(struct udevice *peer_dev, struct udevice *dev, ofnode dev_node)
+static void video_link_add_node(struct udevice *peer_dev, struct udevice *dev,
+	ofnode dev_node, ofnode link_endpoint)
 {
 	int ret = 0;
 	ofnode remote, endpoint_node;
@@ -290,9 +315,14 @@ static void video_link_add_node(struct udevice *peer_dev, struct udevice *dev, o
 
 	debug("endpoint cnt %d\n", ofnode_graph_get_endpoint_count(dev_node));
 
-	video_link_stack_push(dev);
+	video_link_stack_push(dev, link_endpoint);
 
 	for_each_endpoint_of_node(dev_node, endpoint_node) {
+
+		/* To avoid dead loop for dual channel panel, directly break when it is panel device */
+		if (device_get_uclass_id(dev) == UCLASS_PANEL)
+			break;
+
 		remote = ofnode_graph_get_remote_port_parent(endpoint_node);
 		if (!ofnode_valid(remote))
 			continue;
@@ -306,7 +336,7 @@ static void video_link_add_node(struct udevice *peer_dev, struct udevice *dev, o
 				continue;
 
 			/* it is possible that ofnode of remote_dev is not equal to remote */
-			video_link_add_node(dev, remote_dev, remote);
+			video_link_add_node(dev, remote_dev, remote, endpoint_node);
 
 			find = true;
 		}
@@ -353,6 +383,28 @@ struct udevice *video_link_get_next_device(struct udevice *curr_dev)
 
 	return NULL;
 }
+
+ofnode video_link_get_ep_to_nextdev(struct udevice *next_dev)
+{
+	int i;
+
+	if (video_off)
+		return ofnode_null();
+
+	if (curr_video_link >= video_links_num) {
+		printf("current video link is not correct\n");
+		return ofnode_null();
+	}
+
+	for (i = 0; i < video_links[curr_video_link].dev_num; i++) {
+		if (video_links[curr_video_link].link_devs[i] == next_dev) {
+			return video_links[curr_video_link].link_eps[i];
+		}
+	}
+
+	return ofnode_null();
+}
+
 
 struct udevice *video_link_get_video_device(void)
 {
@@ -480,7 +532,7 @@ int video_link_init(void)
 {
 	struct udevice *dev;
 	ulong env_id;
-	int off;
+	int off, retain;
 	memset(&video_links, 0, sizeof(video_links));
 	memset(&temp_stack, 0, sizeof(temp_stack));
 
@@ -488,7 +540,7 @@ int video_link_init(void)
 	     dev;
 	     uclass_find_next_device(&dev)) {
 
-		video_link_add_node(NULL, dev, dev_ofnode(dev));
+		video_link_add_node(NULL, dev, dev_ofnode(dev), ofnode_null());
 	}
 
 	if (video_links_num == 0) {
@@ -507,6 +559,10 @@ int video_link_init(void)
 	if (env_id < video_links_num)
 		curr_video_link = env_id;
 
+	retain = env_get_yesno("video_retain");
+	if (retain == 1)
+		video_retain = true;
+
 	list_videolink(true);
 
 	return 0;
@@ -516,7 +572,7 @@ int video_link_shut_down(void)
 {
 	struct udevice *video_dev = video_link_get_video_device();
 
-	if (video_dev)
+	if (video_dev && !video_retain)
 		device_remove(video_dev, DM_REMOVE_NORMAL);
 
 	return 0;

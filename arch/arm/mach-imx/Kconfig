@@ -1,8 +1,15 @@
+config MACH_IMX
+	bool
+
+if MACH_IMX
+
 config HAS_CAAM
 	bool
 
 config IMX_CONFIG
-	string
+	string "DCD script to use"
+	depends on MACH_IMX
+	default "arch/arm/mach-imx/spl_sd.cfg"
 
 config IMX_OPTEE
 	bool "Support OP-TEE"
@@ -18,7 +25,7 @@ config SYSCOUNTER_TIMER
 config GPT_TIMER
 	bool
 
-config FSL_CAAM_KB
+config MXC_GPT_HCLK
 	bool
 
 config IMX_RDC
@@ -32,6 +39,7 @@ config IMX_RDC
 config IMX_BOOTAUX
 	bool "Support boot auxiliary core"
 	depends on ARCH_MX7 || ARCH_MX6 || ARCH_VF610 || ARCH_IMX8 || ARCH_IMX8M
+	select LIB_ELF
 	help
 	  bootaux [addr] to boot auxiliary core.
 
@@ -71,13 +79,22 @@ config USE_IMXIMG_PLUGIN
 
 config IMX_HAB
 	bool "Support i.MX HAB features"
-	depends on ARCH_MX7 || ARCH_MX6 || ARCH_MX5 || ARCH_MX7ULP || ARCH_IMX8M
+	depends on ARCH_MX7 || ARCH_MX6 || ARCH_MX5 || ARCH_IMX8M || ARCH_MX7ULP
 	select FSL_CAAM if HAS_CAAM
+	select SPL_DRIVERS_MISC if SPL
 	imply CMD_DEKBLOB if HAS_CAAM
 	imply CMD_PROVISION_KEY if HAS_CAAM
 	help
 	  This option enables the support for secure boot (HAB).
 	  See doc/imx/habv4/* for more details.
+
+config IMX_SPL_FIT_FDT_SIGNATURE
+	bool "Enable to verify signature of FIT FDT"
+	depends on IMX_HAB
+	depends on ARCH_IMX8M
+	help
+	  Enable SPL to verify signature of FIT FDT during FIT loading.
+	  This needs additional signing to FIT FDT part.
 
 config CSF_SIZE
 	hex "Maximum size for Command Sequence File (CSF) binary"
@@ -88,10 +105,18 @@ config CSF_SIZE
 	  Define the maximum size for Command Sequence File (CSF) binary
 	  this information is used to define the image boot data.
 
+config CMD_QB
+	bool "Support the 'qb' command"
+	default y
+	imply USE_PREBOOT
+	depends on IMX_SNPS_DDR_PHY_QB_GEN && (IMX95 || IMX94)
+	help
+	  Enable qb command to write DDR quick boot training data to boot device.
+
 config CMD_BMODE
 	bool "Support the 'bmode' command"
 	default y
-	depends on ARCH_MX7 || ARCH_MX6 || ARCH_MX5
+	depends on ARCH_IMX8M || ARCH_MX7 || ARCH_MX6 || ARCH_MX5
 	help
 	  This enables the 'bmode' (bootmode) command for forcing
 	  a boot from specific media.
@@ -107,13 +132,23 @@ config CMD_DEKBLOB
 	select IMX_CAAM_DEK_ENCAP if ARCH_MX6 || ARCH_MX7 || ARCH_MX7ULP
 	select IMX_OPTEE_DEK_ENCAP if ARCH_IMX8M
 	select IMX_SECO_DEK_ENCAP if ARCH_IMX8
+	select IMX_ELE_DEK_ENCAP if ARCH_IMX8ULP || ARCH_IMX9
 	help
 	  This enables the 'dek_blob' command which is used with the
 	  Freescale secure boot mechanism. This command encapsulates and
 	  creates a blob of data. See also CMD_BLOB and doc/imx/habv4/* for
 	  more information.
 
+config TARGET_PRODUCT_NAME
+	string "Target product name"
+	default "NXP i.MX"
+
+config TARGET_PRODUCT_VARIANT
+	string "Target product variant"
+	default "NXP i.MX"
+
 config IMX_CAAM_DEK_ENCAP
+	select FSL_BLOB
 	bool "Support the DEK blob encapsulation with CAAM U-Boot driver"
 	help
 	  This enables the DEK blob encapsulation with the U-Boot CAAM driver.
@@ -133,6 +168,20 @@ config IMX_SECO_DEK_ENCAP
 	help
 	  This enabled the DEK blob encapsulation with the SECO API. This option
 	  is only available on imx8.
+
+config IMX_ELE_DEK_ENCAP
+	bool "Support the DEK blob encapsulation with ELE"
+	help
+	  This enabled the DEK blob encapsulation with the ELE API. This option
+	  is only available on imx8ulp and imx9.
+
+config ELE_SHARED_BUFFER
+	hex "Define the buffer address used for communication with ELE"
+	default 0x0
+	depends on IMX_ELE
+	help
+	  ELE can't access all DDR memory(0xE0000000 - 0xFFFFFFFF) due to the hardware
+	  limitation, use the shared buffer for exchanging data with ele.
 
 config CMD_PRIBLOB
 	bool "Support the set_priblob_bitfield command"
@@ -166,6 +215,14 @@ config CMD_QSPIHDR
 	help
 	  Boot from Q(F)SPI need a boot config header, this command can
 	  help to check if header already exists or add one if not.
+
+config CMD_FSPINAND
+	bool "FSPINAND Boot Control Block(BCB) command"
+	depends on MTD
+	default y
+	help
+	  Boot from FSPI NAND need extra boot control Blocks which contains
+	  both Firmware Configuration Block(FCB), Discovered Bad Block Table(DBBT).
 
 config FSL_MFGPROT
 	bool "Support the 'mfgprot' command"
@@ -208,7 +265,7 @@ config NXP_BOARD_REVISION
 
 config FLASH_MCUFIRMWARE_SUPPORT
 	bool "Enable mcu firmware flash support"
-	depends on ARCH_MX7ULP || ARCH_IMX8M
+	depends on ARCH_MX7ULP || ARCH_IMX8M || IMX95
 	help
 	  This enables the mcu firmware flash support for some SOCs.
 
@@ -224,13 +281,19 @@ config DDRMC_VF610_CALIBRATION
 	  shall perform it on a new PCB and then use those values to program
 	  the ddrmc_cr_setting on relevant board file.
 
+config IMX8_ROMAPI
+	def_bool y
+	depends on IMX8MN || IMX8MP || IMX8ULP || IMX93 || IMX91
+
 config SPL_IMX_ROMAPI_LOADADDR
 	hex "Default load address to load image through ROM API"
-	depends on IMX8MN || IMX8MP || IMX8ULP
+	depends on IMX8_ROMAPI || SPL_BOOTROM_SUPPORT
+	default 0x0
 
 config IMX_DCD_ADDR
 	hex "DCD Blocks location on the image"
-	default 0x00910000 if !ARCH_MX7ULP
+	default 0x00910000 if (!ARCH_MX7ULP && !ARCH_MX7)
+	default 0x00911000 if ARCH_MX7
 	default 0x2f010000 if ARCH_MX7ULP
 	help
 	  Indicates where the Device Configuration Data, a binary table used by
@@ -238,18 +301,21 @@ config IMX_DCD_ADDR
 	  This information is shared with the user via mkimage -l just so the
 	  image can be signed.
 
-config SPL_LOAD_IMX_CONTAINER
-	bool "Enable SPL loading U-Boot as a i.MX Container image"
-	depends on SPL
-	help
-	  This is to let SPL could load i.MX Container image
+config IOMUX_LPSR
+	bool
 
-config IMX_CONTAINER_CFG
-	string "i.MX Container config file"
-	depends on SPL
+config IOMUX_SHARE_CONF_REG
+	bool
+
+config CMD_PROVISION_KEY
+	bool "Support to provision a encrypted key as black blob"
+	depends on IMX8MM || IMX8MN
+	select IMX_CAAM_MFG_PROT
 	help
-	  This is to specific the cfg file for generating container
-	  image which will be loaded by SPL.
+	  reads manufacturing protection public key(MPPUBK).
+	  derive PKEK = sha256(MPPUBK).
+	  read encrypted key and decrypt it using PKEK.
+	  generate black blob of decrypted key, add 20 bytes TAG to black blob.
 
 config ANDROID_SUPPORT
 	bool "Standard Android features support"
@@ -261,6 +327,7 @@ config ANDROID_SUPPORT
 	select SUPPORT_RAW_INITRD
 	select LIBAVB
 	select AVB_SUPPORT
+	imply IMX_SPL_FIT_FDT_SIGNATURE
 
 config ANDROID_AUTO_SUPPORT
 	bool "Android Automotive features support"
@@ -298,6 +365,27 @@ config SYSTEM_RAMDISK_SUPPORT
 	bool "Support build ramdisk in system image"
 	default n
 
+config IMX_ANDROID_GBL
+	bool "Support Android Generic Bootloader (GBL)"
+	depends on ANDROID_SUPPORT || ANDROID_AUTO_SUPPORT
+	default n
+	select RSA
+	select SPL_RSA
+	select RSA_VERIFY_WITH_PKEY
+	select IMAGE_SIGN_INFO
+	select EFI_GBL_AVB
+	select EFI_GBL_OS_CONFIGURATION
+	select EFI_GBL_BOOT_CONTROL
+	select EFI_GBL_BOOT_MEMORY
+	select EFI_GBL_FASTBOOT_TRANSPORT
+	select EFI_GBL_FASTBOOT
+	select EFI_GBL_VENDOR_PARTITION
+	select INCLUDE_DTB_TO_VENDOR_BOOT
+	select EFI_GBL_TIMESTAMP
+	help
+	  Load and boot the Android image by Android Generic Bootloader (GBL),
+	  which is an UEFI application distributed by Google.
+
 menu "TRUSTY OS Support"
 
 config IMX_TRUSTY_OS
@@ -305,7 +393,7 @@ config IMX_TRUSTY_OS
 	select SYS_ARM_CACHE_WRITEALLOC
 	select CMD_MMC_RPMB
 	select SUPPORT_EMMC_RPMB
-	select SPL_SUPPORT_EMMC_RPMB
+	select SPL_MMC_WRITE
 
 config TRUSTY_UNLOCK_PERMISSION
 	bool "Support unlock permission protection in trusty"
@@ -360,20 +448,79 @@ config ATTESTATION_ID_MODEL
 config GENERATE_MPPUBK
 	bool "Enable manufacturing production public key extraction"
 	default y
-	depends on IMX_TRUSTY_OS
+	depends on IMX_TRUSTY_OS && !(ARCH_IMX8ULP)
 
 config SECURE_UNLOCK
 	bool "Enable secure unlock for Android devices, it can only be enabled on HAB closed board"
 	depends on IMX_TRUSTY_OS
 
+config IMX_MATTER_TRUSTY
+	bool "Enable Trusty OS feature for Matter"
+	depends on IMX_TRUSTY_OS
+	default n
+
+config AUTO_SET_RPMB_KEY
+	bool "Set RPMB key automatically"
+	depends on IMX_TRUSTY_OS
+	help
+	  Automatically set the rpmb key which is derived from the hardware
+	  unique key in Trusty OS.
+
+config VPU_SECURE_HEAP
+	bool "Memory need by WIDEVINE_L1"
+	depends on IMX_TRUSTY_OS && (IMX8QM || IMX8QXP)
+	help
+	  if enable widevine L1 on imx8q, need to pass secure memory and vpu memory
+	  to linux. It is only used by imx8qm.
+	default n
+
+config IMX_SUPPORT_SRM
+	bool "Support SRM feature"
+	help
+	  Let trusty to load srm before loading kernel.
+	default n
+
+config IMX_ROLLBACK_BLOB
+	bool "Encapsulate the bootloader rollback index as a blob"
+	help
+	  To avoid disclosure of plaintext data in rpmb, this encapsulates
+	  the bootloader rollback index as a blob then keep in rpmb.
+
+config RPMB_INIT_ALLOW
+	bool "Do RPMB initilization even though magic number not matched"
+	help
+	  uboot will determine if rpmb has finished initializing by checking
+	  the magic number at the beginning of the rpmb. If the
+	  "CONFIG_IMX_ROLLBACK_BLOB" be set, uboot reject to boot if rpmb hasn't
+	  finished initializing or RPMB magic number not matched.
+	  This allow boot and RPMB initializing even though the RPMB magic not
+	  matched. This config should only be set for production then it should
+	  be disabled for release.
+
 endmenu
 
 config APPEND_BOOTARGS
-	bool "Append bootargs support"
+	bool "Append bootargs and/or bootconfig support"
+	help
+	  Allow appending user-defined parameters to bootargs and/or bootconfig
+	  which are then passed to the kernel.
+
+	  When enabled, the parameters defined in 'append_bootargs' environment
+	  variable will be appended to 'bootargs' (kernel command line). The
+	  parameters defined in 'append_bootconfig' will be appended to the
+	  kernel bootconfig structure, which is parsed by the kernel at early
+	  boot and subsequently read by the Android init process.
+
+	  IMPORTANT: Use the ":=" operator to override an existing key in
+	  bootconfig. Using "=" for duplicate keys will cause the kernel to
+	  fail parsing bootconfig with a "Value is redefined" error, potentially
+	  preventing system boot.
+
+	  This is a debug option and should always be disabled in production builds.
 
 config DUAL_BOOTLOADER
 	bool "Enable dual bootloader support"
-	select SPL_MMC_SUPPORT
+	select SPL_MMC
 	select SPL_MMC_WRITE
 	help
 	  Enable A/B bootloader select in SPL.
@@ -385,17 +532,19 @@ config VIRTUAL_AB_SUPPORT
 	bool "Support virtual AB update"
 	select ANDROID_DYNAMIC_PARTITION
 
+config INCLUDE_DTB_TO_VENDOR_BOOT
+	bool "Include the dtb into vendor_boot image"
+	default n
+
 config BOOTLOADER_MENU
 	bool "Enable bootloader menu for android device"
 	help
 	bootloader menu feature for android device.
 
-config CMD_PROVISION_KEY
-	bool "Support to provision a encrypted key as black blob"
-	depends on IMX8MM || IMX8MN
-	select IMX_CAAM_MFG_PROT
+config PSCI_BOARD_REBOOT
+	bool "Enable psci board reboot command"
+	depends on ARM_PSCI_FW
 	help
-	  reads manufacturing protection public key(MPPUBK).
-	  derive PKEK = sha256(MPPUBK).
-	  read encrypted key and decrypt it using PKEK.
-	  generate black blob of decrypted key, add 20 bytes TAG to black blob.
+	  This is a optional command used to trigger system board reboot on imx8q and imx95.
+
+endif

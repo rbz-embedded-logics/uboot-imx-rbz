@@ -4,7 +4,6 @@
  *
  */
 
-#include <common.h>
 #include <log.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
@@ -12,7 +11,7 @@
 #include <dm/lists.h>
 #include <dm/root.h>
 #include <dm/device-internal.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <linux/iopoll.h>
 #include <misc.h>
 #include <imx_m4_mu.h>

@@ -3,7 +3,8 @@
  * Copyright 2019 NXP
  */
 
-#include <common.h>
+#include <asm/arch/sys_proto.h>
+#include <efi_loader.h>
 #include <env.h>
 #include <errno.h>
 #include <init.h>
@@ -25,8 +26,9 @@
 #include "../common/tcpc.h"
 #include <usb.h>
 #include <dwc3-uboot.h>
-#include <imx_sip.h>
-#include <linux/arm-smccc.h>
+#include <dm/uclass-internal.h>
+#include <dm/pinctrl.h>
+#include <fuse.h>
 #include <mmc.h>
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -51,6 +53,23 @@ static void setup_gpmi_nand(void)
 }
 #endif
 
+#if CONFIG_IS_ENABLED(EFI_HAVE_CAPSULE_SUPPORT)
+struct efi_fw_image fw_images[] = {
+	{
+		.image_type_id = IMX_BOOT_IMAGE_GUID,
+		.fw_name = u"IMX8MP-EVK-RAW",
+		.image_index = 1,
+	},
+};
+
+struct efi_capsule_update_info update_info = {
+	.dfu_string = "mmc 2=flash-bin raw 0 0x2000 mmcpart 1",
+	.num_images = ARRAY_SIZE(fw_images),
+	.images = fw_images,
+};
+
+#endif /* EFI_HAVE_CAPSULE_SUPPORT */
+
 int board_early_init_f(void)
 {
 	struct wdog_regs *wdog = (struct wdog_regs *)WDOG1_BASE_ADDR;
@@ -67,8 +86,55 @@ int board_early_init_f(void)
 }
 
 #ifdef CONFIG_OF_BOARD_SETUP
+static int jh_mem_fdt_setup(void *blob)
+{
+	char *p, *b, *s;
+	char *token = NULL;
+	int i, ret = 0;
+	u64 base[CONFIG_NR_DRAM_BANKS] = {0};
+	u64 size[CONFIG_NR_DRAM_BANKS] = {0};
+
+	p = env_get("jh_root_mem");
+	if (!p)
+		return 0;
+
+	i = 0;
+	token = strtok(p, ",");
+	while (token) {
+		if (i >= CONFIG_NR_DRAM_BANKS) {
+			printf("Error: The number of size@base exceeds CONFIG_NR_DRAM_BANKS.\n");
+			return -EINVAL;
+		}
+
+		b = token;
+		s = strsep(&b, "@");
+		if (!s) {
+			printf("The format of jh_root_mem is size@base[,size@base...].\n");
+			return -EINVAL;
+		}
+
+		base[i] = simple_strtoull(b, NULL, 16);
+		size[i] = simple_strtoull(s, NULL, 16);
+		token = strtok(NULL, ",");
+		i++;
+	}
+
+	ret = fdt_fixup_memory_banks(blob, base, size, CONFIG_NR_DRAM_BANKS);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 int ft_board_setup(void *blob, struct bd_info *bd)
 {
+	int ret;
+	ret = jh_mem_fdt_setup(blob);
+	if (ret) {
+		printf("jailhouse memory process fail.\n");
+		return ret;
+	}
+
 #ifdef CONFIG_IMX8M_DRAM_INLINE_ECC
 #ifdef CONFIG_TARGET_IMX8MP_DDR4_EVK
 	int rc;
@@ -289,12 +355,6 @@ static struct dwc3_device dwc3_device_data = {
 	.power_down_scale = 2,
 };
 
-int usb_gadget_handle_interrupts(int index)
-{
-	dwc3_uboot_handle_interrupt(index);
-	return 0;
-}
-
 static void dwc3_nxp_usb_phy_init(struct dwc3_device *dwc3)
 {
 	u32 RegData;
@@ -338,9 +398,9 @@ static void dwc3_nxp_usb_phy_init(struct dwc3_device *dwc3)
 int board_usb_init(int index, enum usb_init_type init)
 {
 	int ret = 0;
-	imx8m_usb_power(index, true);
 
 	if (index == 0 && init == USB_INIT_DEVICE) {
+		imx8m_usb_power(index, true);
 #ifdef CONFIG_USB_TCPC
 		ret = tcpc_setup_ufp_mode(&port1);
 		if (ret)
@@ -363,13 +423,12 @@ int board_usb_cleanup(int index, enum usb_init_type init)
 	int ret = 0;
 	if (index == 0 && init == USB_INIT_DEVICE) {
 		dwc3_uboot_exit(index);
+		imx8m_usb_power(index, false);
 	} else if (index == 0 && init == USB_INIT_HOST) {
 #ifdef CONFIG_USB_TCPC
 		ret = tcpc_disable_src_vbus(&port1);
 #endif
 	}
-
-	imx8m_usb_power(index, false);
 
 	return ret;
 }
@@ -399,59 +458,42 @@ int board_typec_get_mode(int index)
 #endif
 #endif
 
-static void setup_fec(void)
+
+#if IS_ENABLED(CONFIG_IMX8MP_GP5_LOCK_UPDATE)
+#define GP5_LOCK_WPOP 0x300
+
+static void lock_gp5_fuse(void)
 {
-	struct iomuxc_gpr_base_regs *gpr =
-		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
+	u32 val = 0;
+	int ret;
 
-	/* Enable RGMII TX clk output */
-	setbits_le32(&gpr->gpr[1], BIT(22));
-}
+	ret = fuse_sense(0, 1, &val);
+	if (ret) {
+		printf("Sense GP5_LOCK fuse failed\n");
+		return;
+	}
 
-static int setup_eqos(void)
-{
-	struct iomuxc_gpr_base_regs *gpr =
-		(struct iomuxc_gpr_base_regs *)IOMUXC_GPR_BASE_ADDR;
+	if ((val & GP5_LOCK_WPOP) != GP5_LOCK_WPOP) {
+		printf("Locking GP5 ");
+		ret = fuse_prog(0, 1, GP5_LOCK_WPOP);
+		if (!ret)
+			printf("done\n");
+		else
+			printf("failed %d\n", ret);
 
-	/* set INTF as RGMII, enable RGMII TXC clock */
-	clrsetbits_le32(&gpr->gpr[1],
-			IOMUXC_GPR_GPR1_GPR_ENET_QOS_INTF_SEL_MASK, BIT(16));
-	setbits_le32(&gpr->gpr[1], BIT(19) | BIT(21));
-
-	return set_clk_eqos(ENET_125MHZ);
-}
-
-#if CONFIG_IS_ENABLED(NET)
-int board_phy_config(struct phy_device *phydev)
-{
-	if (phydev->drv->config)
-		phydev->drv->config(phydev);
-	return 0;
+	}
 }
 #endif
-
-#define DISPMIX				13
-#define MIPI				15
 
 int board_init(void)
 {
-	struct arm_smccc_res res;
+#if IS_ENABLED(CONFIG_IMX8MP_GP5_LOCK_UPDATE)
+	lock_gp5_fuse();
+#endif
 
 #ifdef CONFIG_USB_TCPC
 	setup_typec();
-
-	/* Enable USB power default */
-	imx8m_usb_power(0, true);
-	imx8m_usb_power(1, true);
 #endif
-
-	if (CONFIG_IS_ENABLED(FEC_MXC)) {
-		setup_fec();
-	}
-
-	if (CONFIG_IS_ENABLED(DWC_ETH_QOS)) {
-		setup_eqos();
-	}
 
 #ifdef CONFIG_NAND_MXS
 	setup_gpmi_nand();
@@ -461,20 +503,15 @@ int board_init(void)
 	init_usb_clk();
 #endif
 
-	/* enable the dispmix & mipi phy power domain */
-	arm_smccc_smc(IMX_SIP_GPC, IMX_SIP_GPC_PM_DOMAIN,
-		      DISPMIX, true, 0, 0, 0, 0, &res);
-	arm_smccc_smc(IMX_SIP_GPC, IMX_SIP_GPC_PM_DOMAIN,
-		      MIPI, true, 0, 0, 0, 0, &res);
-
 	return 0;
 }
 
 int board_late_init(void)
 {
-#ifdef CONFIG_ENV_IS_IN_MMC
+#if CONFIG_IS_ENABLED(ENV_IS_IN_MMC)
 	board_late_mmc_env_init();
 #endif
+
 #ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 	env_set("board_name", "EVK");
 	env_set("board_rev", "iMX8MP");
@@ -483,15 +520,27 @@ int board_late_init(void)
 	return 0;
 }
 
+#ifndef CONFIG_XPL_BUILD
+void board_prep_linux(struct bootm_headers *images)
+{
+	int ret;
+	struct udevice *dwc3_usb;
+
+	ret = uclass_find_device_by_seq(UCLASS_USB, 1, &dwc3_usb);
+	if (!ret)
+		pinctrl_select_state(dwc3_usb, "gpio");
+}
+#endif
+
 #ifdef CONFIG_ANDROID_SUPPORT
 bool is_power_key_pressed(void) {
 	return (bool)(!!(readl(SNVS_HPSR) & (0x1 << 6)));
 }
 #endif
 
-#ifdef CONFIG_SPL_MMC_SUPPORT
+#ifdef CONFIG_SPL_MMC
 #define UBOOT_RAW_SECTOR_OFFSET 0x40
-unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc)
+unsigned long spl_mmc_get_uboot_raw_sector(struct mmc *mmc, unsigned long raw_sect)
 {
 	u32 boot_dev = spl_boot_device();
 	switch (boot_dev) {
@@ -511,3 +560,9 @@ int is_recovery_key_pressing(void)
 }
 #endif /* CONFIG_ANDROID_RECOVERY */
 #endif /* CONFIG_FSL_FASTBOOT */
+
+#ifdef CONFIG_IMX_MATTER_TRUSTY
+int board_get_emmc_id(void) {
+	return 2;
+}
+#endif

@@ -5,16 +5,15 @@
  * Extracted from Chromium coreboot commit 3f59b13d
  */
 
-#include <common.h>
 #include <bootstage.h>
 #include <dm.h>
 #include <edid.h>
 #include <errno.h>
 #include <display.h>
 #include <edid.h>
-#include <lcd.h>
 #include <log.h>
 #include <part.h>
+#include <time.h>
 #include <video.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
@@ -362,7 +361,7 @@ static int display_init(struct udevice *dev, void *lcdbase,
 		return ret;
 	}
 
-	dc_ctlr = (struct dc_ctlr *)dev_read_addr(dev);
+	dc_ctlr = dev_read_addr_ptr(dev);
 	if (ofnode_decode_display_timing(dev_ofnode(dev), 0, timing)) {
 		debug("%s: Failed to decode display timing\n", __func__);
 		return -EINVAL;

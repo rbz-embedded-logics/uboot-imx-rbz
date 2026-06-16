@@ -7,7 +7,6 @@
 /*
  * SCSI support.
  */
-#include <common.h>
 #include <blk.h>
 #include <command.h>
 #include <scsi.h>
@@ -34,9 +33,6 @@ static int do_scsi(struct cmd_tbl *cmdtp, int flag, int argc,
 	if (argc == 2) {
 		if (strncmp(argv[1], "res", 3) == 0) {
 			printf("\nReset SCSI\n");
-#ifndef CONFIG_DM_SCSI
-			scsi_bus_reset(NULL);
-#endif
 			ret = scsi_scan(true);
 			if (ret)
 				return CMD_RET_FAILURE;
@@ -50,7 +46,7 @@ static int do_scsi(struct cmd_tbl *cmdtp, int flag, int argc,
 		}
 	}
 
-	return blk_common_cmd(argc, argv, IF_TYPE_SCSI, &scsi_curr_dev);
+	return blk_common_cmd(argc, argv, UCLASS_SCSI, &scsi_curr_dev);
 }
 
 U_BOOT_CMD(

@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * 2017 by Marek Behun <marek.behun@nic.cz>
+ * 2017 by Marek Behún <kabel@kernel.org>
  *
  * Derived from code in ext4/dev.c, which was based on reiserfs/dev.c
  */
 
 #define LOG_CATEGORY LOGC_CORE
 
-#include <common.h>
 #include <blk.h>
 #include <compiler.h>
 #include <log.h>
@@ -29,8 +28,7 @@ int fs_devread(struct blk_desc *blk, struct disk_partition *partition,
 	/* Check partition boundaries */
 	if ((sector + ((byte_offset + byte_len - 1) >> log2blksz))
 	    >= partition->size) {
-		log_err("%s read outside partition " LBAFU "\n", __func__,
-			sector);
+		log_debug("read outside partition " LBAFU "\n", sector);
 		return 0;
 	}
 

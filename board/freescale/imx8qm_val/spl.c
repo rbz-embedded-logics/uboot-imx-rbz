@@ -4,7 +4,6 @@
  * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <dm.h>
 #include <image.h>
 #include <init.h>
@@ -16,6 +15,7 @@
 #include <dm/uclass-internal.h>
 #include <dm/device-internal.h>
 #include <dm/lists.h>
+#include <asm/sections.h>
 #include <bootm.h>
 
 DECLARE_GLOBAL_DATA_PTR;

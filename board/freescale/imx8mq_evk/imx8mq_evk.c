@@ -1,36 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2018 NXP
+ * Copyright 2018, 2023 NXP
  */
 
-#include <common.h>
-#include <env.h>
-#include <init.h>
-#include <malloc.h>
-#include <errno.h>
-#include <asm/global_data.h>
-#include <asm/io.h>
+#include <asm/arch/clock.h>
+#include <efi_loader.h>
 #include <miiphy.h>
 #include <netdev.h>
-#include <asm/mach-imx/iomux-v3.h>
-#include <asm-generic/gpio.h>
-#include <fsl_esdhc_imx.h>
-#include <mmc.h>
 #include <asm/arch/imx8mq_pins.h>
 #include <asm/arch/sys_proto.h>
-#include <asm/mach-imx/gpio.h>
-#include <asm/mach-imx/mxc_i2c.h>
-#include <asm/arch/clock.h>
-#include <spl.h>
-#include <linux/bitops.h>
-#include <power/pmic.h>
-#include <power/pfuze100_pmic.h>
+#include <asm/mach-imx/iomux-v3.h>
+#include <asm-generic/gpio.h>
+#include <env.h>
 #include "../common/tcpc.h"
-#include "../common/pfuze.h"
 #include <usb.h>
 #include <dwc3-uboot.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1)
 
@@ -44,6 +28,23 @@ static iomux_v3_cfg_t const uart_pads[] = {
 	IMX8MQ_PAD_UART1_RXD__UART1_RX | MUX_PAD_CTRL(UART_PAD_CTRL),
 	IMX8MQ_PAD_UART1_TXD__UART1_TX | MUX_PAD_CTRL(UART_PAD_CTRL),
 };
+
+#if CONFIG_IS_ENABLED(EFI_HAVE_CAPSULE_SUPPORT)
+struct efi_fw_image fw_images[] = {
+	{
+		.image_type_id = IMX_BOOT_IMAGE_GUID,
+		.fw_name = u"IMX8MQ-EVK-RAW",
+		.image_index = 1,
+	},
+};
+
+struct efi_capsule_update_info update_info = {
+	.dfu_string = "mmc 0=flash-bin raw 0x42 0x2000 mmcpart 1",
+	.num_images = ARRAY_SIZE(fw_images),
+	.images = fw_images,
+};
+
+#endif /* EFI_HAVE_CAPSULE_SUPPORT */
 
 int board_early_init_f(void)
 {
@@ -74,23 +75,20 @@ static int setup_fec(void)
 
 	/* Use 125M anatop REF_CLK1 for ENET1, not from external */
 	clrsetbits_le32(&gpr->gpr[1],
-		IOMUXC_GPR_GPR1_GPR_ENET1_TX_CLK_SEL_MASK, 0);
-	return set_clk_enet(ENET_125MHZ);
+		IOMUXC_GPR_GPR1_GPR_ENET1_TX_CLK_SEL, 0);
+
+	return 0;
 }
 
 int board_phy_config(struct phy_device *phydev)
 {
+#ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
+	if (phydev->drv->uid == 0x1cc916) /*RTL8211F*/
+		env_set("board_name", "WEVK");
+#endif
+
 	if (phydev->drv->config)
 		phydev->drv->config(phydev);
-
-#ifndef CONFIG_DM_ETH
-	/* enable rgmii rxc skew and phy mode select to RGMII copper */
-	phy_write(phydev, MDIO_DEVAD_NONE, 0x1d, 0x1f);
-	phy_write(phydev, MDIO_DEVAD_NONE, 0x1e, 0x8);
-
-	phy_write(phydev, MDIO_DEVAD_NONE, 0x1d, 0x05);
-	phy_write(phydev, MDIO_DEVAD_NONE, 0x1e, 0x100);
-#endif
 
 	return 0;
 }
@@ -122,12 +120,6 @@ static struct dwc3_device dwc3_device_data = {
 	.index = 0,
 	.power_down_scale = 2,
 };
-
-int usb_gadget_handle_interrupts(int index)
-{
-	dwc3_uboot_handle_interrupt(index);
-	return 0;
-}
 
 static void dwc3_nxp_usb_phy_init(struct dwc3_device *dwc3)
 {
@@ -268,15 +260,31 @@ int board_init(void)
 
 int board_late_init(void)
 {
+#if CONFIG_IS_ENABLED(ENV_IS_IN_MMC)
+	board_late_mmc_env_init();
+#endif
+
 #ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
 	env_set("board_name", "EVK");
 	env_set("board_rev", "iMX8MQ");
 #endif
 
-#ifdef CONFIG_ENV_IS_IN_MMC
-	board_late_mmc_env_init();
-#endif
+	return 0;
+}
 
+int board_phys_sdram_size(phys_size_t *size)
+{
+	if (!size)
+		return -EINVAL;
+
+	*size = PHYS_SDRAM_SIZE;
+
+#ifdef PHYS_SDRAM_2_SIZE
+	u32 val = readl(DDRC_IPS_BASE_ADDR(0) + 0x218);
+	val >>= 29;
+	if ((val & 0x3) == 0) /* 4GB board */
+		*size += PHYS_SDRAM_2_SIZE;
+#endif
 	return 0;
 }
 

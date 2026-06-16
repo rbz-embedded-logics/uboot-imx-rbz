@@ -3,7 +3,6 @@
  * Copyright (C) 2015 Thomas Chou <thomas@wytron.com.tw>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <timer.h>
@@ -38,7 +37,8 @@ static int sandbox_timer_probe(struct udevice *dev)
 {
 	struct timer_dev_priv *uc_priv = dev_get_uclass_priv(dev);
 
-	if (dev_read_bool(dev, "sandbox,timebase-frequency-fallback"))
+	if (CONFIG_IS_ENABLED(CPU) &&
+	    dev_read_bool(dev, "sandbox,timebase-frequency-fallback"))
 		return timer_timebase_fallback(dev);
 	else if (!uc_priv->clock_rate)
 		uc_priv->clock_rate = SANDBOX_TIMER_RATE;
@@ -65,6 +65,8 @@ U_BOOT_DRIVER(sandbox_timer) = {
 };
 
 /* This is here in case we don't have a device tree */
+#if !CONFIG_IS_ENABLED(OF_PLATDATA)
 U_BOOT_DRVINFO(sandbox_timer_non_fdt) = {
 	.name = "sandbox_timer",
 };
+#endif

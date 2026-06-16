@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright 2020-2021 NXP Semiconductors
+ * Copyright 2020-2021 NXP
  */
 
 #include <net/dsa.h>
@@ -56,8 +56,7 @@ static int dm_test_dsa_probe(struct unit_test_state *uts)
 
 	return 0;
 }
-
-DM_TEST(dm_test_dsa_probe, UT_TESTF_SCAN_FDT);
+DM_TEST(dm_test_dsa_probe, UTF_SCAN_FDT);
 
 /* This test sends ping requests with the local address through each DSA port
  * via the sandbox DSA master Eth.
@@ -78,5 +77,4 @@ static int dm_test_dsa(struct unit_test_state *uts)
 
 	return 0;
 }
-
-DM_TEST(dm_test_dsa, UT_TESTF_SCAN_FDT);
+DM_TEST(dm_test_dsa, UTF_SCAN_FDT);

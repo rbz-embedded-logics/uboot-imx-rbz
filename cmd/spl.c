@@ -4,7 +4,6 @@
  * Corscience GmbH & Co. KG - Simon Schwarz <schwarz@corscience.de>
  */
 
-#include <common.h>
 #include <command.h>
 #include <cmd_spl.h>
 #include <env.h>
@@ -32,11 +31,7 @@ static const char **subcmd_list[] = {
 		NULL,
 	},
 	[SPL_EXPORT_ATAGS] = (const char * []) {
-#if defined(CONFIG_SETUP_MEMORY_TAGS) || \
-	defined(CONFIG_CMDLINE_TAG) || \
-	defined(CONFIG_INITRD_TAG) || \
-	defined(CONFIG_SERIAL_TAG) || \
-	defined(CONFIG_REVISION_TAG)
+#ifdef CONFIG_SUPPORT_PASSING_ATAGS
 		"start",
 		"loados",
 #ifdef CONFIG_SYS_BOOT_RAMDISK_HIGH
@@ -70,7 +65,6 @@ static int call_bootm(int argc, char *const argv[], const char *subcommand[])
 	case 1:
 		bootm_argv[2] = argv[0]; /* kernel addr */
 	}
-
 
 	/*
 	 * - do the work -

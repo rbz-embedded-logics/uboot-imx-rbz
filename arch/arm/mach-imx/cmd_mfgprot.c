@@ -1,25 +1,26 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2016 Freescale Semiconductor, Inc.
  * Copyright 2017 NXP
- *
- * SPDX-License-Identifier: GPL-2.0+
  *
  * These commands enable the use of the CAAM MPPubK-generation and MPSign
  * functions in supported i.MX devices.
  */
 
 #include <command.h>
-#include <common.h>
+#include <config.h>
 #include <env.h>
+#include <linux/errno.h>
 #include <mapmem.h>
 #include <memalign.h>
+#include <vsprintf.h>
 #ifdef CONFIG_IMX_CAAM_MFG_PROT
 #include <asm/arch/clock.h>
 #include <fsl_sec.h>
 #endif
 #ifdef CONFIG_IMX_SECO_MFG_PROT
 #include <asm/io.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #endif
 
 /**
@@ -48,7 +49,7 @@ static int do_mfgprot(struct cmd_tbl *cmdtp, int flag, int argc, char *const arg
 	/* Enable HAB clock */
 	hab_caam_clock_enable(1);
 
-	u32 out_jr_size = sec_in32(CONFIG_SYS_FSL_JR0_ADDR +
+	u32 out_jr_size = sec_in32(CFG_SYS_FSL_JR0_ADDR +
 				   FSL_CAAM_ORSR_JRa_OFFSET);
 
 	if (out_jr_size != FSL_CAAM_MAX_JR_SIZE)
@@ -76,8 +77,8 @@ static int do_mfgprot(struct cmd_tbl *cmdtp, int flag, int argc, char *const arg
 		if (argc != 4)
 			return CMD_RET_USAGE;
 
-		m_addr = simple_strtoul(argv[2], NULL, 16);
-		m_size = simple_strtoul(argv[3], NULL, 10);
+		m_addr = hextoul(argv[2], NULL);
+		m_size = dectoul(argv[3], NULL);
 		m_ptr = map_physmem(m_addr, m_size, MAP_NOCACHE);
 		if (!m_ptr)
 			return -ENOMEM;
@@ -256,15 +257,15 @@ free_m:
 #endif /* CONFIG_IMX_SECO_MFG_PROT */
 
 /***************************************************/
-static char mfgprot_help_text[] =
+U_BOOT_LONGHELP(mfgprot,
 	"Usage:\n"
 	 "Print the public key for Manufacturing Protection\n"
 	 "\tmfgprot pubk\n"
 	 "Generates a Manufacturing Protection signature\n"
-	 "\tmfgprot sign <data_addr> <size>";
+	 "\tmfgprot sign <data_addr> <size>\n");
 
 U_BOOT_CMD(
 	mfgprot, 4, 1, do_mfgprot,
-	"Manufacturing Protection\n",
+	"Manufacturing Protection",
 	mfgprot_help_text
 );

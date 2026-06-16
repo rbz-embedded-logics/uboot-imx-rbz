@@ -8,9 +8,7 @@
 #include <log.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
-#include <asm/u-boot.h>
 #include <asm/utils.h>
-#include <common.h>
 #include <hang.h>
 #include <image.h>
 #include <spl.h>
@@ -24,22 +22,6 @@
 #include <dm/uclass.h>
 
 DECLARE_GLOBAL_DATA_PTR;
-
-u32 spl_boot_device(void)
-{
-	return BOOT_DEVICE_MMC1;
-}
-
-#ifdef CONFIG_SPL_MMC_SUPPORT
-u32 spl_mmc_boot_mode(const u32 boot_device)
-{
-#if defined(CONFIG_SPL_FS_FAT) || defined(CONFIG_SPL_FS_EXT4)
-	return MMCSD_MODE_FS;
-#else
-	return MMCSD_MODE_RAW;
-#endif
-}
-#endif
 
 void board_init_f(ulong dummy)
 {

@@ -9,6 +9,12 @@ config SYS_VENDOR
 config SYS_CONFIG_NAME
 	default "imx8mp_evk"
 
-source "board/freescale/common/Kconfig"
+config IMX_CONFIG
+	default "board/freescale/imx8mp_evk/imximage-8mp-lpddr4.cfg"
+
+config IMX8MP_GP5_LOCK_UPDATE
+	bool "Enable burn GP5_LOCK fuse at boot"
+	help
+	  Select to check the GP5_LOCK fuse and burn it to WP+OP
 
 endif

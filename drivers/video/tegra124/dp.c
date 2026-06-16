@@ -4,12 +4,12 @@
  * Copyright 2014 Google Inc.
  */
 
-#include <common.h>
 #include <display.h>
 #include <dm.h>
 #include <div64.h>
 #include <errno.h>
 #include <log.h>
+#include <time.h>
 #include <video_bridge.h>
 #include <asm/io.h>
 #include <asm/arch-tegra/dc.h>
@@ -626,7 +626,6 @@ static int tegra_dc_dp_calc_config(struct tegra_dp_priv *dp,
 
 	if (link_cfg->hblank_sym < 0)
 		link_cfg->hblank_sym = 0;
-
 
 	/*
 	 * Refer to dev_disp.ref for more information.
@@ -1494,8 +1493,8 @@ int tegra_dp_enable(struct udevice *dev, int panel_bpp,
 		return -ENOLINK;
 	}
 
-	ret = uclass_first_device(UCLASS_VIDEO_BRIDGE, &sor);
-	if (ret || !sor) {
+	ret = uclass_first_device_err(UCLASS_VIDEO_BRIDGE, &sor);
+	if (ret) {
 		debug("dp: failed to find SOR device: ret=%d\n", ret);
 		return ret;
 	}
@@ -1609,6 +1608,7 @@ static int dp_tegra_probe(struct udevice *dev)
 
 static const struct udevice_id tegra_dp_ids[] = {
 	{ .compatible = "nvidia,tegra124-dpaux" },
+	{ .compatible = "nvidia,tegra210-dpaux" },
 	{ }
 };
 

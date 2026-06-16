@@ -4,7 +4,6 @@
  *
  */
 
-#include <common.h>
 #include <dm.h>
 #include <dm/device_compat.h>
 #include <mipi_dsi.h>
@@ -236,7 +235,7 @@ static const struct panel_ops adv7535_ops = {
 };
 
 static const struct udevice_id adv7535_ids[] = {
-	{ .compatible = "adi,adv7533" },
+	{ .compatible = "adi,adv7535" },
 	{ }
 };
 

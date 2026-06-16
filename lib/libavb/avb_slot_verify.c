@@ -17,7 +17,7 @@
 #include <log.h>
 #include <malloc.h>
 #include <memalign.h>
-#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX)
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_IMX9)
 #include "trusty/hwcrypto.h"
 #endif
 
@@ -29,8 +29,11 @@
 
 /* Maximum size of a vbmeta image - 64 KiB. */
 #define VBMETA_MAX_SIZE (64 * 1024)
-/* Set the image load addr start from 96MB offset of CONFIG_FASTBOOT_BUF_ADDR */
-#define PARTITION_LOAD_ADDR_START (CONFIG_FASTBOOT_BUF_ADDR + (96 * 1024 * 1024))
+/* Set the image load addr start from 65MB offset of CONFIG_FASTBOOT_BUF_ADDR,
+ * [CONFIG_FASTBOOT_BUF_ADDR, CONFIG_FASTBOOT_BUF_ADDR + 65MB] memory space would
+ * be used as a temporary buffer for sha256 hash calculation.
+ */
+#define PARTITION_LOAD_ADDR_START (CONFIG_FASTBOOT_BUF_ADDR + (65 * 1024 * 1024))
 
 /* Load dtbo/boot partition to fixed address instead of heap memory. */
 static void *image_addr_top = (void *)PARTITION_LOAD_ADDR_START;
@@ -300,7 +303,7 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
   size_t expected_digest_len = 0;
   uint8_t expected_digest_buf[AVB_SHA512_DIGEST_SIZE];
   const uint8_t* expected_digest = NULL;
-#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX)
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_IMX9)
   uint8_t* hash_out = NULL;
   uint8_t* hash_buf = NULL;
 #endif
@@ -395,7 +398,7 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
   // Although only one of the type might be used, we have to defined the
   // structure here so that they would live outside the 'if/else' scope to be
   // used later.
-#if !defined(CONFIG_IMX_TRUSTY_OS) || defined(CONFIG_AVB_ATX) ||  defined(CONFIG_XEN)
+#if !defined(CONFIG_IMX_TRUSTY_OS) || defined(CONFIG_IMX9) ||  defined(CONFIG_XEN)
   AvbSHA256Ctx sha256_ctx;
 #endif
   AvbSHA512Ctx sha512_ctx;
@@ -406,7 +409,7 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
     image_size_to_hash = image_size;
   }
   if (avb_strcmp((const char*)hash_desc.hash_algorithm, "sha256") == 0) {
-#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX)
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_IMX9)
     /* DMA requires cache aligned input/output buffer */
     hash_out = memalign(ARCH_DMA_MINALIGN, AVB_SHA256_DIGEST_SIZE);
     if (hash_out == NULL) {
@@ -489,7 +492,7 @@ static AvbSlotVerifyResult load_and_verify_hash_partition(
 
 out:
 
-#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_AVB_ATX)
+#if defined(CONFIG_IMX_TRUSTY_OS) && !defined(CONFIG_IMX9)
   if (hash_out != NULL) {
     free(hash_out);
     hash_out = NULL;
@@ -613,6 +616,8 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
     size_t expected_public_key_length,
     AvbSlotVerifyData* slot_data,
     AvbAlgorithmType* out_algorithm_type,
+    uint8_t** out_toplevel_vbmeta_public_key_data,
+    size_t* out_toplevel_vbmeta_public_key_length,
     AvbCmdlineSubstList* out_additional_cmdline_subst) {
   char full_partition_name[AVB_PART_NAME_MAX_SIZE];
   AvbSlotVerifyResult ret;
@@ -767,6 +772,8 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
                                    0 /* expected_public_key_length */,
                                    slot_data,
                                    out_algorithm_type,
+                                   out_toplevel_vbmeta_public_key_data,
+                                   out_toplevel_vbmeta_public_key_length,
                                    out_additional_cmdline_subst);
       goto out;
     } else {
@@ -785,6 +792,22 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
   switch (vbmeta_ret) {
     case AVB_VBMETA_VERIFY_RESULT_OK:
       avb_assert(pk_data != NULL && pk_len > 0);
+      if (is_main_vbmeta) {
+        if (out_toplevel_vbmeta_public_key_data != NULL) {
+          *out_toplevel_vbmeta_public_key_data = avb_malloc(pk_len);
+          if (*out_toplevel_vbmeta_public_key_data == NULL) {
+            ret = AVB_SLOT_VERIFY_RESULT_ERROR_OOM;
+            goto out;
+          }
+          // Copy the public key data into the output parameter since pk_data
+          // is a pointer to data in vbmeta_buf, whose memory gets deallocated
+          // at the end of this function.
+          avb_memcpy(*out_toplevel_vbmeta_public_key_data, pk_data, pk_len);
+        }
+        if (out_toplevel_vbmeta_public_key_length != NULL) {
+          *out_toplevel_vbmeta_public_key_length = pk_len;
+        }
+      }
       break;
 
     case AVB_VBMETA_VERIFY_RESULT_OK_NOT_SIGNED:
@@ -1071,6 +1094,8 @@ static AvbSlotVerifyResult load_and_verify_vbmeta(
                                    chain_desc.public_key_len,
                                    slot_data,
                                    NULL, /* out_algorithm_type */
+                                   out_toplevel_vbmeta_public_key_data,
+                                   out_toplevel_vbmeta_public_key_length,
                                    NULL /* out_additional_cmdline_subst */);
         if (sub_ret != AVB_SLOT_VERIFY_RESULT_OK) {
           ret = sub_ret;
@@ -1415,6 +1440,8 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
   AvbAlgorithmType algorithm_type = AVB_ALGORITHM_TYPE_NONE;
   bool using_boot_for_vbmeta = false;
   AvbVBMetaImageHeader toplevel_vbmeta;
+  uint8_t* toplevel_vbmeta_public_key_data = NULL;
+  size_t toplevel_vbmeta_public_key_length = 0;
   bool allow_verification_error =
       (flags & AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR);
   AvbCmdlineSubstList* additional_cmdline_subst = NULL;
@@ -1518,6 +1545,8 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
                                    0 /* expected_public_key_length */,
                                    slot_data,
                                    &algorithm_type,
+                                   NULL /* out_toplevel_vbmeta_public_key_data */,
+                                   NULL /* out_toplevel_vbmeta_public_key_length */,
                                    additional_cmdline_subst);
       if (!allow_verification_error && ret != AVB_SLOT_VERIFY_RESULT_OK) {
         goto fail;
@@ -1539,6 +1568,8 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
                                  0 /* expected_public_key_length */,
                                  slot_data,
                                  &algorithm_type,
+                                 &toplevel_vbmeta_public_key_data,
+                                 &toplevel_vbmeta_public_key_length,
                                  additional_cmdline_subst);
     if (!allow_verification_error && ret != AVB_SLOT_VERIFY_RESULT_OK) {
       goto fail;
@@ -1618,6 +1649,8 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
                                  flags,
                                  slot_data,
                                  &toplevel_vbmeta,
+                                 toplevel_vbmeta_public_key_data,
+                                 toplevel_vbmeta_public_key_length,
                                  algorithm_type,
                                  hashtree_error_mode,
                                  resolved_hashtree_error_mode);
@@ -1651,6 +1684,10 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
     avb_slot_verify_data_free(slot_data);
   }
 
+  if (toplevel_vbmeta_public_key_data != NULL) {
+    avb_free(toplevel_vbmeta_public_key_data);
+  }
+
   avb_free_cmdline_subst_list(additional_cmdline_subst);
   additional_cmdline_subst = NULL;
 
@@ -1663,6 +1700,9 @@ AvbSlotVerifyResult avb_slot_verify(AvbOps* ops,
 fail:
   if (slot_data != NULL) {
     avb_slot_verify_data_free(slot_data);
+  }
+  if (toplevel_vbmeta_public_key_data != NULL) {
+    avb_free(toplevel_vbmeta_public_key_data);
   }
   if (additional_cmdline_subst != NULL) {
     avb_free_cmdline_subst_list(additional_cmdline_subst);

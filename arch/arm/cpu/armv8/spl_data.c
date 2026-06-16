@@ -3,11 +3,10 @@
  * Copyright 2020 NXP
  */
 
-#include <common.h>
 #include <spl.h>
 
-char __data_save_start[0] __section(.__data_save_start);
-char __data_save_end[0] __section(.__data_save_end);
+char __data_save_start[0] __section(".__data_save_start");
+char __data_save_end[0] __section(".__data_save_end");
 
 u32 cold_reboot_flag = 1;
 

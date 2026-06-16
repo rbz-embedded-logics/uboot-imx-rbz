@@ -9,7 +9,6 @@
  * Copyright (C) 2015-2016 Freescale Semiconductor, Inc.
  *
  */
-#include <common.h>
 #include <errno.h>
 #include <dm.h>
 #include <malloc.h>
@@ -51,13 +50,13 @@ static unsigned long gpio_ports[] = {
 	[0] = GPIO1_BASE_ADDR,
 	[1] = GPIO2_BASE_ADDR,
 	[2] = GPIO3_BASE_ADDR,
-#if defined(CONFIG_MX25) || defined(CONFIG_MX27) || defined(CONFIG_MX51) || \
+#if defined(CONFIG_MX51) || \
 		defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
 		defined(CONFIG_MX7) || defined(CONFIG_IMX8M) || \
 		defined(CONFIG_ARCH_IMX8) || defined(CONFIG_IMXRT1050)
 	[3] = GPIO4_BASE_ADDR,
 #endif
-#if defined(CONFIG_MX27) || defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
+#if defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
 		defined(CONFIG_MX7) || defined(CONFIG_IMX8M) || \
 		defined(CONFIG_ARCH_IMX8) || defined(CONFIG_IMXRT1050)
 	[4] = GPIO5_BASE_ADDR,
@@ -181,7 +180,10 @@ int gpio_get_value(unsigned gpio)
 
 	regs = (struct gpio_regs *)gpio_ports[port];
 
-	val = (readl(&regs->gpio_dr) >> gpio) & 0x01;
+	if ((readl(&regs->gpio_dir) >> gpio) & 0x01)
+		val = (readl(&regs->gpio_dr) >> gpio) & 0x01;
+	else
+		val = (readl(&regs->gpio_psr) >> gpio) & 0x01;
 
 	RDC_SPINLOCK_DOWN(port);
 
@@ -264,7 +266,10 @@ static void mxc_gpio_bank_set_value(struct gpio_regs *regs, int offset,
 
 static int mxc_gpio_bank_get_value(struct gpio_regs *regs, int offset)
 {
-	return (readl(&regs->gpio_dr) >> offset) & 0x01;
+	if ((readl(&regs->gpio_dir) >> offset) & 0x01)
+		return (readl(&regs->gpio_dr) >> offset) & 0x01;
+	else
+		return (readl(&regs->gpio_psr) >> offset) & 0x01;
 }
 
 /* set GPIO pin 'gpio' as an input */
@@ -405,12 +410,12 @@ static const struct mxc_gpio_plat mxc_plat[] = {
 	{ 0, (struct gpio_regs *)GPIO1_BASE_ADDR },
 	{ 1, (struct gpio_regs *)GPIO2_BASE_ADDR },
 	{ 2, (struct gpio_regs *)GPIO3_BASE_ADDR },
-#if defined(CONFIG_MX25) || defined(CONFIG_MX27) || defined(CONFIG_MX51) || \
+#if defined(CONFIG_MX51) || \
 		defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
 		defined(CONFIG_IMX8M) || defined(CONFIG_ARCH_IMX8)
 	{ 3, (struct gpio_regs *)GPIO4_BASE_ADDR },
 #endif
-#if defined(CONFIG_MX27) || defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
+#if defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
 		defined(CONFIG_IMX8M) || defined(CONFIG_ARCH_IMX8)
 	{ 4, (struct gpio_regs *)GPIO5_BASE_ADDR },
 #ifndef CONFIG_IMX8M
@@ -429,12 +434,12 @@ U_BOOT_DRVINFOS(mxc_gpios) = {
 	{ "gpio_mxc", &mxc_plat[0] },
 	{ "gpio_mxc", &mxc_plat[1] },
 	{ "gpio_mxc", &mxc_plat[2] },
-#if defined(CONFIG_MX25) || defined(CONFIG_MX27) || defined(CONFIG_MX51) || \
+#if defined(CONFIG_MX51) || \
 		defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
 		defined(CONFIG_IMX8M) || defined(CONFIG_ARCH_IMX8)
 	{ "gpio_mxc", &mxc_plat[3] },
 #endif
-#if defined(CONFIG_MX27) || defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
+#if defined(CONFIG_MX53) || defined(CONFIG_MX6) || \
 		defined(CONFIG_IMX8M) || defined(CONFIG_ARCH_IMX8)
 	{ "gpio_mxc", &mxc_plat[4] },
 #ifndef CONFIG_IMX8M

@@ -5,7 +5,6 @@
  * Copyright (C) 2019 Hannes Schmelzer <oe5hpm@oevsv.at>
  * B&R Industrial Automation GmbH - http://www.br-automation.com/ *
  */
-#include <common.h>
 #include <env.h>
 #include <errno.h>
 #include <i2c.h>
@@ -23,14 +22,8 @@
 #define BMODE_PME		12
 #define BMODE_DIAG		15
 
-#if CONFIG_IS_ENABLED(LCD) && !CONFIG_IS_ENABLED(DM_VIDEO)
-#include <lcd.h>
-#define LCD_SETCURSOR(x, y)	lcd_position_cursor(x, y)
-#define LCD_PUTS(x)		lcd_puts(x)
-#else
 #define LCD_SETCURSOR(x, y)
 #define LCD_PUTS(x)
-#endif /* CONFIG_LCD */
 
 static const char *bootmodeascii[16] = {
 	"BOOT",		"reserved",	"reserved",	"reserved",

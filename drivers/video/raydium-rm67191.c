@@ -4,7 +4,6 @@
  *
  */
 
-#include <common.h>
 #include <dm.h>
 #include <dm/device_compat.h>
 #include <mipi_dsi.h>
@@ -214,7 +213,7 @@ static const cmd_set_table mcs_rm67199[] = {
 
 
 static const struct display_timing default_timing = {
-	.pixelclock.typ		= 132000000,
+	.pixelclock.typ		= 121000000,
 	.hactive.typ		= 1080,
 	.hfront_porch.typ	= 20,
 	.hback_porch.typ	= 34,

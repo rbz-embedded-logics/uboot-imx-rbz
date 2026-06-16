@@ -1,8 +1,0 @@
-RBZ MOD_IMX8M_MINI BOARD
-M:	Carlos Amor <camor@rbz.es>
-S:	Maintained
-F:	arch/arm/dts/mod-imx8m-mini.dts
-F:	arch/arm/dts/mod-imx8m-mini-u-boot.dtsi
-F:	board/rbz/mod_imx8m_mini/
-F:	include/configs/mod_imx8m_mini.h
-F:	configs/mod_imx8m_mini_defconfig

@@ -26,6 +26,7 @@
 #define TCPC_ALERT_POWER_STATUS		BIT(1)
 #define TCPC_ALERT_CC_STATUS		BIT(0)
 
+#define TCPC_ALERT_MASK			0x12
 #define TCPC_FAULT_STATUS_MASK		0x15
 
 #define TCPC_TCPC_CTRL				0x19
@@ -453,7 +454,7 @@ int tcpc_init(struct tcpc_port *port, struct tcpc_port_config config, ss_mux_sel
 bool tcpc_pd_sink_check_charging(struct tcpc_port *port);
 void tcpc_print_log(struct tcpc_port *port);
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 int tcpc_setup_ufp_mode(struct tcpc_port *port)
 {
 	return 0;

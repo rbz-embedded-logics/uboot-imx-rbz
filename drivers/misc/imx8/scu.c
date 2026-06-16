@@ -5,7 +5,6 @@
  * Peng Fan <peng.fan@nxp.com>
  */
 
-#include <common.h>
 #include <log.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
@@ -13,7 +12,7 @@
 #include <dm/lists.h>
 #include <dm/root.h>
 #include <dm/device-internal.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <linux/bitops.h>
 #include <linux/iopoll.h>
 #include <misc.h>
@@ -57,7 +56,7 @@ static int mu_hal_sendmsg(struct mu_type *base, u32 reg_index, u32 msg)
 	assert(reg_index < MU_TR_COUNT);
 
 	/* Wait TX register to be empty. */
-	ret = readl_poll_timeout(&base->sr, val, val & mask, 10000);
+	ret = readl_poll_timeout(&base->sr, val, val & mask, 1000000);
 	if (ret < 0) {
 		printf("%s timeout\n", __func__);
 		return -ETIMEDOUT;
@@ -192,7 +191,7 @@ static int imx8_scu_probe(struct udevice *dev)
 	if (addr == FDT_ADDR_T_NONE)
 		return -EINVAL;
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 	plat->base = (struct mu_type *)CONFIG_MU_BASE_SPL;
 #else
 	plat->base = (struct mu_type *)addr;

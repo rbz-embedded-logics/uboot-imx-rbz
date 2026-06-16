@@ -3,7 +3,8 @@
  * Copyright (c) 2014 Google, Inc
  */
 
-#include <common.h>
+#define LOG_CATEGORY UCLASS_SIMPLE_BUS
+
 #include <asm/global_data.h>
 #include <dm.h>
 #include <dm/simple_bus.h>
@@ -63,7 +64,7 @@ UCLASS_DRIVER(simple_bus) = {
 	.per_device_plat_auto	= sizeof(struct simple_bus_plat),
 };
 
-#if !CONFIG_IS_ENABLED(OF_PLATDATA)
+#if CONFIG_IS_ENABLED(OF_REAL)
 static const struct udevice_id generic_simple_bus_ids[] = {
 	{ .compatible = "simple-bus" },
 	{ .compatible = "simple-mfd" },

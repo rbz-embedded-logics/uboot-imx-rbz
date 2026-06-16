@@ -4,7 +4,6 @@
  * Copyright 2017 NXP
  *
  */
-#include <common.h>
 #include <malloc.h>
 #include <recovery.h>
 #ifdef CONFIG_MXC_KPD

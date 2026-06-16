@@ -7,7 +7,6 @@
  */
 
 #include <bootm.h>
-#include <common.h>
 #include <dm.h>
 #include <init.h>
 #include <log.h>
@@ -27,10 +26,6 @@
 #include <dm/device-internal.h>
 #include <dm/uclass-internal.h>
 
-#ifdef CONFIG_VIDEO_GIS
-#include <gis.h>
-#endif
-
 #ifdef CONFIG_FSL_ESDHC_IMX
 #include <fsl_esdhc_imx.h>
 #endif
@@ -44,7 +39,7 @@ u32 get_imx_reset_cause(void)
 	if (reset_cause == -1) {
 		reset_cause = readl(&src_regs->srsr);
 /* preserve the value for U-Boot proper */
-#if !defined(CONFIG_SPL_BUILD) && !defined(CONFIG_ANDROID_BOOT_IMAGE)
+#if !defined(CONFIG_XPL_BUILD) && !defined(CONFIG_ANDROID_BOOT_IMAGE)
 		/* We will read the ssrs states later for android so we don't
 		 * clear the states here.
 		 */
@@ -55,7 +50,7 @@ u32 get_imx_reset_cause(void)
 	return reset_cause;
 }
 
-#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_SPL_BUILD)
+#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_XPL_BUILD)
 static char *get_reset_cause(void)
 {
 	switch (get_imx_reset_cause()) {
@@ -111,21 +106,29 @@ void get_reboot_reason(char *ret)
 #endif
 #endif
 
-#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_SPL_BUILD)
+#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_XPL_BUILD)
 
 const char *get_imx_type(u32 imxtype)
 {
 	switch (imxtype) {
 	case MXC_CPU_IMX8MP:
 		return "8MP[8]";	/* Quad-core version of the imx8mp */
+	case MXC_CPU_IMX8MPD2:
+		return "8MP Dual[2]";	/* Dual-core version of the imx8mp, low cost industrial & HMI */
 	case MXC_CPU_IMX8MPD:
 		return "8MP Dual[3]";	/* Dual-core version of the imx8mp */
 	case MXC_CPU_IMX8MPL:
 		return "8MP Lite[4]";	/* Quad-core Lite version of the imx8mp */
+	case MXC_CPU_IMX8MP5:
+		return "8MP[5]";	/* Quad-core version of the imx8mp, low cost industrial & HMI */
 	case MXC_CPU_IMX8MP6:
 		return "8MP[6]";	/* Quad-core version of the imx8mp, NPU fused */
 	case MXC_CPU_IMX8MPUL:
 		return "8MP UltraLite";	/* Quad-core UltraLite version of the imx8mp */
+	case MXC_CPU_IMX8MPSC:
+		return "8MP[8] SC";	/* Quad-core SC version of the imx8mp */
+	case MXC_CPU_IMX8MPDSC:
+		return "8MP Dual[3] SC";	/* Dual-core SC version of the imx8mp */
 	case MXC_CPU_IMX8MN:
 		return "8MNano Quad"; /* Quad-core version */
 	case MXC_CPU_IMX8MND:
@@ -315,10 +318,6 @@ u32 get_ahb_clk(void)
 
 void arch_preboot_os(void)
 {
-#if defined(CONFIG_PCIE_IMX) && !CONFIG_IS_ENABLED(DM_PCI)
-	imx_pcie_remove();
-#endif
-
 #if defined(CONFIG_IMX_AHCI)
 	struct udevice *dev;
 	int rc;
@@ -347,11 +346,7 @@ void arch_preboot_os(void)
 	/* disable video before launching O/S */
 	ipuv3_fb_shutdown();
 #endif
-#ifdef CONFIG_VIDEO_GIS
-	/* Entry for GIS */
-	mxc_disable_gis();
-#endif
-#if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_DM_VIDEO)
+#if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_VIDEO)
 	lcdif_power_down();
 #endif
 }

@@ -5,4 +5,4 @@
 #
 
 obj-y += imx8dxl_evk.o
-obj-$(CONFIG_SPL_BUILD) += spl.o
+obj-$(CONFIG_XPL_BUILD) += spl.o

@@ -3,7 +3,7 @@
   * Copyright 2020 NXP
   */
 
-#include "imx8mp-evk.dts"
+#include "../dts/upstream/src/arm64/freescale/imx8mp-evk.dts"
 #include "imx8mp-evk-u-boot.dtsi"
 
 / {
@@ -19,6 +19,7 @@
 	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
 	status = "okay";
 	nand-on-flash-bbt;
+	fsl,use-minimum-ecc;
 };
 
 &usdhc3 {

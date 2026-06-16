@@ -8,9 +8,9 @@
  * Copyright (C) 2004,2008  Kustaa Nyholm
  */
 
-#include <common.h>
-#include <stdarg.h>
+#include <log.h>
 #include <serial.h>
+#include <stdarg.h>
 #include <linux/ctype.h>
 
 struct printf_info {
@@ -47,7 +47,7 @@ static void div_out(struct printf_info *info, unsigned long *num,
 		out_dgt(info, dgt);
 }
 
-#ifdef CONFIG_SPL_NET_SUPPORT
+#ifdef CONFIG_SPL_NET
 static void string(struct printf_info *info, char *s)
 {
 	char ch;
@@ -177,7 +177,7 @@ static void __maybe_unused pointer(struct printf_info *info, const char *fmt,
 		}
 		break;
 #endif
-#ifdef CONFIG_SPL_NET_SUPPORT
+#ifdef CONFIG_SPL_NET
 	case 'm':
 		return mac_address_string(info, ptr, false);
 	case 'M':
@@ -269,20 +269,20 @@ static int _vprintf(struct printf_info *info, const char *fmt, va_list va)
 				}
 				break;
 			case 'p':
-#ifdef DEBUG
-				pointer(info, fmt, va_arg(va, void *));
-				/*
-				 * Skip this because it pulls in _ctype which is
-				 * 256 bytes, and we don't generally implement
-				 * pointer anyway
-				 */
-				while (isalnum(fmt[0]))
-					fmt++;
-				break;
-#else
+				if (CONFIG_IS_ENABLED(NET) ||
+				    CONFIG_IS_ENABLED(NET_LWIP) || _DEBUG) {
+					pointer(info, fmt, va_arg(va, void *));
+					/*
+					 * Skip this because it pulls in _ctype which is
+					 * 256 bytes, and we don't generally implement
+					 * pointer anyway
+					 */
+					while (isalnum(fmt[0]))
+						fmt++;
+					break;
+				}
 				islong = true;
 				/* no break */
-#endif
 			case 'x':
 				if (islong) {
 					num = va_arg(va, unsigned long);
@@ -312,7 +312,7 @@ static int _vprintf(struct printf_info *info, const char *fmt, va_list va)
 
 			*info->bf = 0;
 			info->bf = p;
-			while (*info->bf++ && width > 0)
+			while (width > 0 && info->bf && *info->bf++)
 				width--;
 			while (width-- > 0)
 				info->putc(info, lz ? '0' : ' ');
@@ -366,16 +366,15 @@ int sprintf(char *buf, const char *fmt, ...)
 {
 	struct printf_info info;
 	va_list va;
-	int ret;
 
 	va_start(va, fmt);
 	info.outstr = buf;
 	info.putc = putc_outstr;
-	ret = _vprintf(&info, fmt, va);
+	_vprintf(&info, fmt, va);
 	va_end(va);
 	*info.outstr = '\0';
 
-	return ret;
+	return info.outstr - buf;
 }
 
 #if CONFIG_IS_ENABLED(LOG)
@@ -383,14 +382,13 @@ int sprintf(char *buf, const char *fmt, ...)
 int vsnprintf(char *buf, size_t size, const char *fmt, va_list va)
 {
 	struct printf_info info;
-	int ret;
 
 	info.outstr = buf;
 	info.putc = putc_outstr;
-	ret = _vprintf(&info, fmt, va);
+	_vprintf(&info, fmt, va);
 	*info.outstr = '\0';
 
-	return ret;
+	return info.outstr - buf;
 }
 #endif
 
@@ -399,16 +397,15 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
 {
 	struct printf_info info;
 	va_list va;
-	int ret;
 
 	va_start(va, fmt);
 	info.outstr = buf;
 	info.putc = putc_outstr;
-	ret = _vprintf(&info, fmt, va);
+	_vprintf(&info, fmt, va);
 	va_end(va);
 	*info.outstr = '\0';
 
-	return ret;
+	return info.outstr - buf;
 }
 
 void print_grouped_ull(unsigned long long int_val, int digits)
