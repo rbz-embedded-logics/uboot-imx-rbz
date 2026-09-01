@@ -10,27 +10,16 @@
  * TI OMAP5 AND DRA7XX common configuration settings
  *
  * For more details, please see the technical documents listed at
- * http://www.ti.com/product/omap5432
+ * https://www.ti.com/product/omap5432
  */
 
 #ifndef __CONFIG_TI_OMAP5_COMMON_H
 #define __CONFIG_TI_OMAP5_COMMON_H
 
 /* Use General purpose timer 1 */
-#define CONFIG_SYS_TIMERBASE		GPT2_BASE
+#define CFG_SYS_TIMERBASE		GPT2_BASE
 
-/*
- * For the DDR timing information we can either dynamically determine
- * the timings to use or use pre-determined timings (based on using the
- * dynamic method.  Default to the static timing infomation.
- */
-#define CONFIG_SYS_EMIF_PRECALCULATED_TIMING_REGS
-#ifndef CONFIG_SYS_EMIF_PRECALCULATED_TIMING_REGS
-#define CONFIG_SYS_AUTOMATIC_SDRAM_DETECTION
-#define CONFIG_SYS_DEFAULT_LPDDR2_TIMINGS
-#endif
-
-#define CONFIG_PALMAS_POWER
+#include <linux/stringify.h>
 
 #include <asm/arch/cpu.h>
 #include <asm/arch/omap.h>
@@ -40,11 +29,7 @@
 /*
  * Hardware drivers
  */
-#define CONFIG_SYS_NS16550_CLK		48000000
-#if !defined(CONFIG_DM_SERIAL)
-#define CONFIG_SYS_NS16550_SERIAL
-#define CONFIG_SYS_NS16550_REG_SIZE	(-4)
-#endif
+#define CFG_SYS_NS16550_CLK		48000000
 
 /*
  * Environment setup
@@ -54,19 +39,23 @@
 #define DFUARGS
 #endif
 
-#include <environment/ti/boot.h>
-#include <environment/ti/mmc.h>
-#include <environment/ti/nand.h>
+#define BOOT_TARGET_DEVICES(func) \
+	func(TI_MMC, ti_mmc, na) \
+	func(MMC, mmc, 0) \
+	func(MMC, mmc, 1) \
+	func(PXE, pxe, na) \
+	func(DHCP, dhcp, na)
 
-#define CONFIG_EXTRA_ENV_SETTINGS \
-	DEFAULT_LINUX_BOOT_ENV \
-	DEFAULT_MMC_TI_ARGS \
-	DEFAULT_FIT_TI_ARGS \
-	DEFAULT_COMMON_BOOT_TI_ARGS \
-	DEFAULT_FDT_TI_ARGS \
-	DFUARGS \
-	NETARGS \
-	NANDARGS \
+#define BOOTENV_DEV_TI_MMC(devtypeu, devtypel, instance)	\
+	"bootcmd_ti_mmc= run get_name_kern; run mmcboot\0"
+
+#define BOOTENV_DEV_NAME_TI_MMC(devtyeu, devtypel, instance)            \
+	"ti_mmc "
+
+#include <config_distro_bootcmd.h>
+
+#define CFG_EXTRA_ENV_SETTINGS \
+	BOOTENV
 
 /*
  * SPL related defines.  The Public RAM memory map the ROM defines the
@@ -89,19 +78,13 @@
  * firewall violation, we tell u-boot that memory is protected RAM (PRAM)
  */
 #if (CONFIG_TI_SECURE_EMIF_REGION_START == 0)
-#define CONFIG_PRAM (CONFIG_TI_SECURE_EMIF_TOTAL_REGION_SIZE) >> 10
+#define CFG_PRAM (CONFIG_TI_SECURE_EMIF_TOTAL_REGION_SIZE) >> 10
 #endif
 #else
 /*
  * For all booting on GP parts, the flash loader image is
  * downloaded into internal RAM at address 0x40300000.
  */
-#endif
-
-#define CONFIG_SYS_SPL_ARGS_ADDR	(CONFIG_SYS_SDRAM_BASE + \
-					 (128 << 20))
-#ifdef CONFIG_SPL_BUILD
-#undef CONFIG_TIMER
 #endif
 
 #endif /* __CONFIG_TI_OMAP5_COMMON_H */

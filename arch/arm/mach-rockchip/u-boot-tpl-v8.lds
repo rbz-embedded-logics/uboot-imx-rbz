@@ -22,9 +22,9 @@ SECTIONS
 {
 	. = 0x00000000;
 
+	__image_copy_start = ADDR(.text);
 	.text : {
 		. = ALIGN(8);
-		*(.__image_copy_start)
 		CPUDIR/start.o (.text*)
 		*(.text*)
 	}
@@ -39,35 +39,21 @@ SECTIONS
 		*(.data*)
 	}
 
-	.u_boot_list : {
+	__u_boot_list : {
 		. = ALIGN(8);
-		KEEP(*(SORT(.u_boot_list*)));
+		KEEP(*(SORT(__u_boot_list*)));
+		. = ALIGN(8);
 	}
 
-	.image_copy_end : {
-		. = ALIGN(8);
-		*(.__image_copy_end)
-	}
-
-	.end : {
-		. = ALIGN(8);
-		*(.__end)
-	}
-
+	__image_copy_end = .;
+	_end = .;
 	_image_binary_end = .;
 
-	.bss_start (NOLOAD) : {
-		. = ALIGN(8);
-		KEEP(*(.__bss_start));
-	}
-
-	.bss (NOLOAD) : {
+	.bss ALIGN(8) : {
+		__bss_start = .;
 		*(.bss*)
-		 . = ALIGN(8);
-	}
-
-	.bss_end (NOLOAD) : {
-		KEEP(*(.__bss_end));
+		. = ALIGN(8);
+		__bss_end = .;
 	}
 
 	/DISCARD/ : { *(.dynsym) }
@@ -82,6 +68,9 @@ SECTIONS
 ASSERT(__image_copy_end - __image_copy_start < (CONFIG_TPL_MAX_SIZE), \
 	"TPL image too big");
 #endif
+
+ASSERT(_image_binary_end % 8 == 0, \
+       "_image_binary_end must be 8-byte aligned for device tree");
 
 #if defined(CONFIG_TPL_BSS_MAX_SIZE)
 ASSERT(__bss_end - __bss_start < (CONFIG_TPL_BSS_MAX_SIZE), \

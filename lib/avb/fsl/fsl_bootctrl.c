@@ -7,7 +7,6 @@
  *
  */
 
-#include <common.h>
 #include <stdlib.h>
 #include <linux/string.h>
 #include <mmc.h>
@@ -18,10 +17,15 @@
 #include <fsl_avb.h>
 #include <image.h>
 #include <hang.h>
-#include "fsl_caam.h"
 #include "fsl_avbkey.h"
 #include "hang.h"
 #include "fsl_bootctrl.h"
+#include <spl_load.h>
+#include <asm/cache.h>
+
+#ifdef CONFIG_IMX_ROLLBACK_BLOB
+#include "fsl_sec.h"
+#endif
 
 /* Maximum values for slot data */
 #define AVB_AB_MAX_PRIORITY 15
@@ -73,6 +77,27 @@ int current_slot(void) {
 		return -1;
 	}
 	return get_curr_slot(&ab_data);
+}
+
+int is_current_slot_successful(bool *success) {
+	struct bootloader_control ab_data;
+	int slot = 0;
+
+	/* Load A/B metadata and decide which slot we are going to load */
+	if (fsl_avb_ab_ops.read_ab_metadata(&fsl_avb_ab_ops, &ab_data) !=
+					    AVB_IO_RESULT_OK) {
+		printf("Error loading AB metadata from misc!\n");
+		return -1;
+	}
+
+	slot = get_curr_slot(&ab_data);
+	if (slot < 0) {
+		printf("Failed to get current slot number!\n");
+		return -1;
+	}
+
+	*success = ab_data.slot_info[slot].successful_boot != 0 ? true : false;
+	return 0;
 }
 
 int slotidx_from_suffix(char *suffix) {
@@ -456,55 +481,11 @@ out:
 	return ret;
 }
 
-
-/* Below are the A/B AVB flow in spl and uboot proper. */
-#if defined(CONFIG_DUAL_BOOTLOADER) && defined(CONFIG_SPL_BUILD)
-
-#define PARTITION_NAME_LEN 13
-#define PARTITION_BOOTLOADER "bootloader"
-
-extern int mmc_switch(struct mmc *mmc, u8 set, u8 index, u8 value);
-
-/* Pre-declaration of h_spl_load_read(), see detail implementation in
- * common/spl/spl_mmc.c.
- */
-ulong h_spl_load_read(struct spl_load_info *load, ulong sector,
-		      ulong count, void *buf);
-
-/* Writes A/B metadata to disk only if it has changed.
- */
-int fsl_save_metadata_if_changed_dual_uboot(struct blk_desc *dev_desc,
-					    struct bootloader_control* ab_data,
-					    struct bootloader_control* ab_data_orig) {
-	struct bootloader_control serialized;
-	size_t num_bytes;
-	struct disk_partition info;
-
-	/* Save metadata if changed. */
-	if (memcmp(ab_data, ab_data_orig, sizeof(struct bootloader_control)) != 0) {
-		/* Get misc partition info */
-		if (part_get_info_efi_by_name(dev_desc, FASTBOOT_PARTITION_MISC, &info) == -1) {
-			printf("Can't get partition info of partition: misc\n");
-			return -1;
-		}
-
-		/* Writing A/B metadata to disk. */
-		fsl_avb_ab_data_update_crc_and_byteswap(ab_data, &serialized);
-		if (write_to_partition_in_bytes(dev_desc, &info,
-						FSL_AB_METADATA_MISC_PARTITION_OFFSET,
-						sizeof(struct bootloader_control),
-						(void *)&serialized, &num_bytes) ||
-						(num_bytes != sizeof(struct bootloader_control))) {
-			printf("Error--write metadata fail!\n");
-			return -1;
-		}
-	}
-	return 0;
-}
-
+#ifdef CONFIG_SPL_BUILD
 /* Load metadate from misc partition.
  */
-int fsl_load_metadata_dual_uboot(struct blk_desc *dev_desc,
+#if defined(CONFIG_IMX_TRUSTY_OS) || defined(CONFIG_DUAL_BOOTLOADER)
+int spl_fsl_load_metadata(struct blk_desc *dev_desc,
 				 struct bootloader_control* ab_data,
 				 struct bootloader_control* ab_data_orig) {
 	struct disk_partition info;
@@ -550,8 +531,113 @@ int fsl_load_metadata_dual_uboot(struct blk_desc *dev_desc,
 		}
 	}
 }
+#endif /* CONFIG_IMX_TRUSTY_OS || CONFIG_DUAL_BOOTLOADER */
 
-#if !defined(CONFIG_XEN) && defined(CONFIG_IMX_TRUSTY_OS)
+#ifdef CONFIG_IMX_TRUSTY_OS
+#ifdef CONFIG_IMX_ROLLBACK_BLOB
+extern u8 skeymod[16];
+
+static int spl_verify_rbidx(struct mmc *mmc, struct slot_metadata *slot,
+                        struct spl_image_info *spl_image)
+{
+	kblb_hdr_t hdr;
+	kblb_tag_t *rbk;
+	int ret = 0;
+	uint8_t *rollback_idx_blob = NULL;
+	uint32_t rbidx_len = BOOTLOADER_RBIDX_LEN;
+	uint8_t *extract_idx = NULL;
+	uint8_t *keymod = NULL;
+
+	/* Make sure rollback index has been initialized before verify */
+	if (rpmb_init()) {
+		printf("RPMB init failed!\n");
+		return -1;
+	}
+
+	extract_idx = (uint8_t *)memalign(ARCH_DMA_MINALIGN, rbidx_len);
+	if (!extract_idx) {
+		printf("failed to allocate memory!\n");
+		ret = -1;
+		goto exit;
+	}
+	memset(extract_idx, 0, rbidx_len);
+
+	keymod = (uint8_t *)memalign(ARCH_DMA_MINALIGN, sizeof(skeymod));
+	if (!keymod) {
+		printf("failed to allocate memory!\n");
+		ret = -1;
+		goto exit;
+	}
+	memcpy(keymod, skeymod, sizeof(skeymod));
+
+	/* Read bootloader rollback index header first. */
+	if (rpmb_read(mmc, (uint8_t *)&hdr, sizeof(hdr),
+			BOOTLOADER_RBIDX_OFFSET) != 0) {
+		printf("Read RPMB error!\n");
+		ret = -1;
+		goto exit;
+	}
+
+	/* Read bootloader rollback index. */
+	rbk = &(hdr.bootloader_rbk_tags);
+
+	rollback_idx_blob = (uint8_t *)memalign(ARCH_DMA_MINALIGN, rbk->len);
+	if (!rollback_idx_blob) {
+		printf("failed to allocate memory!\n");
+		ret = -1;
+		goto exit;
+	}
+
+	if (rpmb_read(mmc, (uint8_t *)rollback_idx_blob, rbk->len, rbk->offset) != 0) {
+		printf("Read rollback index blob error!\n");
+		ret = -1;
+		goto exit;
+	}
+
+	if (blob_decap(keymod, rollback_idx_blob, extract_idx, rbidx_len, 0)) {
+		printf("Decap rollback index error\n");
+		ret = -1;
+		goto exit;
+	}
+
+	/* Verify bootloader rollback index. */
+	if (spl_image->rbindex >= *((uint64_t *)extract_idx)) {
+		/* Rollback index verify pass, update it only when current slot
+		 * has been marked as successful.
+		 */
+		if ((slot->successful_boot != 0) && (spl_image->rbindex != *((uint64_t *)extract_idx)))
+		{
+			memcpy(extract_idx, (uint8_t *)(&(spl_image->rbindex)), rbidx_len);
+
+			if (blob_encap(keymod, extract_idx, rollback_idx_blob, rbidx_len, 0)) {
+				printf("Encap rollback index error\n");
+				ret = -1;
+				goto exit;
+			}
+
+			if (rpmb_write(mmc, rollback_idx_blob, rbk->len, rbk->offset)) {
+				printf("Update bootloader rollback index failed!\n");
+				ret = -1;
+				goto exit;
+			}
+		}
+		ret = 0;
+	} else {
+		printf("Rollback index verify rejected!\n");
+		ret = -1;
+	}
+
+exit:
+	if (rollback_idx_blob)
+		free(rollback_idx_blob);
+	if (extract_idx)
+		free(extract_idx);
+	if (keymod)
+		free(keymod);
+	return ret;
+}
+#else /* CONFIG_IMX_ROLLBACK_BLOB */
+
 static int spl_verify_rbidx(struct mmc *mmc, struct slot_metadata *slot,
 			struct spl_image_info *spl_image)
 {
@@ -611,17 +697,149 @@ static int spl_verify_rbidx(struct mmc *mmc, struct slot_metadata *slot,
 	}
 
 }
-#endif /* !CONFIG_XEN && CONFIG_IMX_TRUSTY_OS */
+#endif /* CONFIG_IMX_ROLLBACK_BLOB */
 
-int mmc_load_image_raw_sector_dual_uboot(struct spl_image_info *spl_image,
-					 struct mmc *mmc)
+/*
+ * spl_fit_get_rbindex(): Get rollback index of the bootloader.
+ * @fit:	Pointer to the FDT blob.
+ *
+ * Return:	the rollback index value of bootloader or a negative
+ * 		error number.
+ */
+int spl_fit_get_rbindex(const void *fit)
+{
+	const char *str;
+	uint64_t index;
+	int conf_node;
+	int len;
+
+	conf_node = fit_find_config_node(fit);
+	if (conf_node < 0) {
+		return conf_node;
+	}
+
+	str = fdt_getprop(fit, conf_node, "rbindex", &len);
+	if (!str) {
+		debug("cannot find property 'rbindex'\n");
+		return -EINVAL;
+	}
+
+	index = simple_strtoul(str, NULL, 10);
+
+	return index;
+}
+
+int check_rollback_index(struct spl_image_info *spl_image, struct mmc *mmc)
 {
 	struct disk_partition info;
-	unsigned long count;
+	struct blk_desc *desc;
+	struct bootloader_control ab_data, ab_data_orig;
+	size_t target_slot;
+	int ret = -1;
+	unsigned char original_part;
+
+	/* Only checks rollback index when rpmb key is set */
+	if (!rpmbkey_is_set()) {
+		printf("RPMB key is not set.\n");
+		return 0;
+	}
+
+	/* Check if gpt is valid */
+	desc = mmc_get_blk_desc(mmc);
+	if (desc) {
+		/* switch to user partition of eMMC */
+		original_part = desc->hwpart;
+		if (desc->hwpart != 0) {
+			if (mmc_switch_part(mmc, 0) != 0)
+				return -1;
+			desc->hwpart = 0;
+		}
+
+		if (part_get_info(desc, 1, &info)) {
+			printf("GPT is invalid, please flash correct GPT!\n");
+			ret = -1;
+			goto fail;
+		}
+	} else {
+		printf("Get block desc fail!\n");
+		return -1;
+	}
+
+	/* Load AB metadata from misc partition */
+	if (spl_fsl_load_metadata(desc, &ab_data, &ab_data_orig)) {
+		ret = -1;
+		goto fail;
+	}
+	target_slot = (ab_data.slot_info[1].priority > ab_data.slot_info[0].priority) ? 1 : 0;
+
+	ret = spl_verify_rbidx(mmc, &ab_data.slot_info[target_slot], spl_image);
+
+fail:
+	/* Return to original partition */
+	if (desc->hwpart != original_part) {
+		if (mmc_switch_part(mmc, original_part) != 0)
+			ret = -1;
+		else
+			desc->hwpart = original_part;
+	}
+
+	return ret;
+}
+#endif /* CONFIG_IMX_TRUSTY_OS */
+#endif /* CONFIG_SPL_BUILD */
+
+/* Below are the A/B AVB flow in spl and uboot proper. */
+#if defined(CONFIG_DUAL_BOOTLOADER) && defined(CONFIG_SPL_BUILD)
+
+#define PARTITION_NAME_LEN 13
+#define PARTITION_BOOTLOADER "bootloader"
+
+extern int mmc_switch(struct mmc *mmc, u8 set, u8 index, u8 value);
+
+/* Pre-declaration of h_spl_load_read(), see detail implementation in
+ * common/spl/spl_mmc.c.
+ */
+ulong h_spl_load_read(struct spl_load_info *load, ulong sector,
+		      ulong count, void *buf);
+
+/* Writes A/B metadata to disk only if it has changed.
+ */
+int fsl_save_metadata_if_changed_dual_uboot(struct blk_desc *dev_desc,
+					    struct bootloader_control* ab_data,
+					    struct bootloader_control* ab_data_orig) {
+	struct bootloader_control serialized;
+	size_t num_bytes;
+	struct disk_partition info;
+
+	/* Save metadata if changed. */
+	if (memcmp(ab_data, ab_data_orig, sizeof(struct bootloader_control)) != 0) {
+		/* Get misc partition info */
+		if (part_get_info_efi_by_name(dev_desc, FASTBOOT_PARTITION_MISC, &info) == -1) {
+			printf("Can't get partition info of partition: misc\n");
+			return -1;
+		}
+
+		/* Writing A/B metadata to disk. */
+		fsl_avb_ab_data_update_crc_and_byteswap(ab_data, &serialized);
+		if (write_to_partition_in_bytes(dev_desc, &info,
+						FSL_AB_METADATA_MISC_PARTITION_OFFSET,
+						sizeof(struct bootloader_control),
+						(void *)&serialized, &num_bytes) ||
+						(num_bytes != sizeof(struct bootloader_control))) {
+			printf("Error--write metadata fail!\n");
+			return -1;
+		}
+	}
+	return 0;
+}
+
+int mmc_load_image_raw_sector_dual_uboot(struct spl_image_info *spl_image,
+					 struct spl_boot_device *bootdev, struct mmc *mmc)
+{
+	struct disk_partition info;
 	int ret = 0, n = 0;
 	char partition_name[PARTITION_NAME_LEN];
 	struct blk_desc *dev_desc;
-	struct image_header *header;
 	struct spl_load_info load;
 	struct bootloader_control ab_data, ab_data_orig;
 	size_t slot_index_to_boot, target_slot;
@@ -653,7 +871,7 @@ int mmc_load_image_raw_sector_dual_uboot(struct spl_image_info *spl_image,
 #endif
 
 	/* Load AB metadata from misc partition */
-	if (fsl_load_metadata_dual_uboot(dev_desc, &ab_data,
+	if (spl_fsl_load_metadata(dev_desc, &ab_data,
 					&ab_data_orig)) {
 		return -1;
 	}
@@ -679,33 +897,11 @@ int mmc_load_image_raw_sector_dual_uboot(struct spl_image_info *spl_image,
 			ret = -1;
 			goto end;
 		} else {
-			header = (struct image_header *)(CONFIG_SYS_TEXT_BASE -
-				 sizeof(struct image_header));
-
-			/* read image header to find the image size & load address */
-			count = blk_dread(dev_desc, info.start, 1, header);
-			if (count == 0) {
-				ret = -1;
-				goto end;
-			}
-
 			/* Load fit/container and check HAB */
-			load.dev = mmc;
-			load.priv = NULL;
-			load.filename = NULL;
-			load.bl_len = mmc->read_bl_len;
+			load.priv = dev_desc;
+			spl_set_bl_len(&load, dev_desc->blksz);
 			load.read = h_spl_load_read;
-			if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
-					image_get_magic(header) == FDT_MAGIC) {
-				/* Fit */
-				ret = spl_load_simple_fit(spl_image, &load,
-							  info.start, header);
-			} else if (IS_ENABLED(CONFIG_SPL_LOAD_IMX_CONTAINER)) {
-				/* container */
-				ret = spl_load_imx_container(spl_image, &load, info.start);
-			} else
-				ret = -1;
-
+			ret = spl_load(spl_image, bootdev, &load, 0, info.start << dev_desc->log2blksz);
 #if !defined(CONFIG_XEN) && defined(CONFIG_IMX_TRUSTY_OS)
 			/* Image loaded successfully, go to verify rollback index */
 			if (rpmbkey_is_set()) {
@@ -752,47 +948,25 @@ int mmc_load_image_raw_sector_dual_uboot(struct spl_image_info *spl_image,
 
 		snprintf(partition_name, PARTITION_NAME_LEN,
 			 PARTITION_BOOTLOADER"%s",
-			 slot_suffix[target_slot]);
+			 slot_suffix[slot_index_to_boot]);
 
 		/* Read part info from gpt */
 		if (part_get_info_by_name(dev_desc, partition_name, &info) == -1) {
 			printf("Can't get partition info of partition bootloader%s\n",
-				slot_suffix[target_slot]);
+				slot_suffix[slot_index_to_boot]);
 			ret = -1;
 			goto end;
 		} else {
-			header = (struct image_header *)(CONFIG_SYS_TEXT_BASE -
-				 sizeof(struct image_header));
-
-			/* read image header to find the image size & load address */
-			count = blk_dread(dev_desc, info.start, 1, header);
-			if (count == 0) {
-				ret = -1;
-				goto end;
-			}
-
 			/* Load fit/container and check HAB */
-			load.dev = mmc;
-			load.priv = NULL;
-			load.filename = NULL;
-			load.bl_len = mmc->read_bl_len;
+			load.priv = dev_desc;
+			spl_set_bl_len(&load, dev_desc->blksz);
 			load.read = h_spl_load_read;
-			if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
-					image_get_magic(header) == FDT_MAGIC) {
-				/* Fit */
-				ret = spl_load_simple_fit(spl_image, &load,
-							  info.start, header);
-			} else if (IS_ENABLED(CONFIG_SPL_LOAD_IMX_CONTAINER)) {
-				/* container */
-				ret = spl_load_imx_container(spl_image, &load, info.start);
-			} else
-				ret = -1;
-
+			ret = spl_load(spl_image, bootdev, &load, 0, info.start << dev_desc->log2blksz);
 #if !defined(CONFIG_XEN) && defined(CONFIG_IMX_TRUSTY_OS)
 			/* Image loaded successfully, go to verify rollback index */
 			if (rpmbkey_is_set()) {
 				if (!ret)
-					ret = spl_verify_rbidx(mmc, &ab_data.slot_info[target_slot], spl_image);
+					ret = spl_verify_rbidx(mmc, &ab_data.slot_info[slot_index_to_boot], spl_image);
 
 				/* Copy rpmb keyslot to secure memory. */
 				if (!ret)
@@ -824,36 +998,6 @@ end:
 		return -1;
 	else
 		return 0;
-}
-
-/*
- * spl_fit_get_rbindex(): Get rollback index of the bootloader.
- * @fit:	Pointer to the FDT blob.
- *
- * Return:	the rollback index value of bootloader or a negative
- * 		error number.
- */
-int spl_fit_get_rbindex(const void *fit)
-{
-	const char *str;
-	uint64_t index;
-	int conf_node;
-	int len;
-
-	conf_node = fit_find_config_node(fit);
-	if (conf_node < 0) {
-		return conf_node;
-	}
-
-	str = fdt_getprop(fit, conf_node, "rbindex", &len);
-	if (!str) {
-		debug("cannot find property 'rbindex'\n");
-		return -EINVAL;
-	}
-
-	index = simple_strtoul(str, NULL, 10);
-
-	return index;
 }
 
 /* For normal build */

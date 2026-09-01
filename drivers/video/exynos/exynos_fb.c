@@ -7,7 +7,6 @@
  */
 
 #include <config.h>
-#include <common.h>
 #include <display.h>
 #include <div64.h>
 #include <dm.h>
@@ -351,7 +350,7 @@ void exynos_fimd_window_off(struct exynos_fb_priv *priv, unsigned int win_id)
 void exynos_fimd_disable_sysmmu(void)
 {
 	u32 *sysmmufimd;
-	unsigned int node;
+	int node;
 	int node_list[2];
 	int count;
 	int i;
@@ -640,24 +639,16 @@ static int exynos_fb_probe(struct udevice *dev)
 #endif
 	exynos_fimd_lcd_init(dev);
 
-	ret = uclass_first_device(UCLASS_PANEL, &panel);
+	ret = uclass_first_device_err(UCLASS_PANEL, &panel);
 	if (ret) {
-		printf("LCD panel failed to probe\n");
+		printf("%s: LCD panel failed to probe %d\n", __func__, ret);
 		return ret;
 	}
-	if (!panel) {
-		printf("LCD panel not found\n");
-		return -ENODEV;
-	}
 
-	ret = uclass_first_device(UCLASS_DISPLAY, &dp);
+	ret = uclass_first_device_err(UCLASS_DISPLAY, &dp);
 	if (ret) {
 		debug("%s: Display device error %d\n", __func__, ret);
 		return ret;
-	}
-	if (!dev) {
-		debug("%s: Display device missing\n", __func__);
-		return -ENODEV;
 	}
 	ret = display_enable(dp, 18, NULL);
 	if (ret) {

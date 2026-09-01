@@ -10,6 +10,7 @@
  *                2011 Nicolas Ferre <nicolas.ferre@atmel.com>
  */
 /dts-v1/;
+#include <dt-bindings/leds/common.h>
 #include "at91sam9g45.dtsi"
 
 / {
@@ -17,7 +18,7 @@
 	compatible = "atmel,at91sam9m10g45ek", "atmel,at91sam9g45", "atmel,at91sam9";
 
 	chosen {
-		u-boot,dm-pre-reloc;
+		bootph-all;
 		stdout-path = &dbgu;
 	};
 
@@ -38,7 +39,7 @@
 	ahb {
 		apb {
 			dbgu: serial@ffffee00 {
-				u-boot,dm-pre-reloc;
+				bootph-all;
 				status = "okay";
 			};
 
@@ -104,6 +105,16 @@
 
 		usb1: ehci@00800000 {
 			status = "okay";
+		};
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		red_led: led-0 {
+			gpios = <&pioD 31 GPIO_ACTIVE_HIGH>;
+			color = <LED_COLOR_ID_RED>;
+			default-state = "on";
 		};
 	};
 };

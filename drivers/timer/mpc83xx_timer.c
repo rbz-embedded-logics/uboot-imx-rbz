@@ -4,12 +4,11 @@
  * Mario Six, Guntermann & Drunck GmbH, mario.six@gdsys.cc
  */
 
-#include <common.h>
+#include <config.h>
 #include <clk.h>
 #include <dm.h>
 #include <irq_func.h>
 #include <log.h>
-#include <status_led.h>
 #include <sysinfo.h>
 #include <time.h>
 #include <timer.h>
@@ -19,6 +18,10 @@
 #include <linux/bitops.h>
 
 DECLARE_GLOBAL_DATA_PTR;
+
+#ifndef CFG_SYS_WATCHDOG_FREQ
+#define CFG_SYS_WATCHDOG_FREQ (CONFIG_SYS_HZ / 2)
+#endif
 
 /**
  * struct mpc83xx_timer_priv - Private data structure for MPC83xx timer driver
@@ -171,13 +174,9 @@ void timer_interrupt(struct pt_regs *regs)
 	priv->timestamp++;
 
 #if defined(CONFIG_WATCHDOG) || defined(CONFIG_HW_WATCHDOG)
-	if ((timestamp % (CONFIG_SYS_WATCHDOG_FREQ)) == 0)
-		WATCHDOG_RESET();
+	if (CFG_SYS_WATCHDOG_FREQ && (priv->timestamp % (CFG_SYS_WATCHDOG_FREQ)) == 0)
+		schedule();
 #endif    /* CONFIG_WATCHDOG || CONFIG_HW_WATCHDOG */
-
-#ifdef CONFIG_LED_STATUS
-	status_led_tick(priv->timestamp);
-#endif /* CONFIG_LED_STATUS */
 }
 
 void wait_ticks(ulong ticks)
@@ -185,7 +184,7 @@ void wait_ticks(ulong ticks)
 	ulong end = get_ticks() + ticks;
 
 	while (end > get_ticks())
-		WATCHDOG_RESET();
+		schedule();
 }
 
 static u64 mpc83xx_timer_get_count(struct udevice *dev)
@@ -202,7 +201,7 @@ static u64 mpc83xx_timer_get_count(struct udevice *dev)
 		tbl = mftb();
 	} while (tbu != mftbu());
 
-	return (tbu * 0x10000ULL) + tbl;
+	return (uint64_t)tbu << 32 | tbl;
 }
 
 static int mpc83xx_timer_probe(struct udevice *dev)

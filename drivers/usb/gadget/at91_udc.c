@@ -13,7 +13,6 @@
 #undef	VERBOSE_DEBUG
 #undef	PACKET_TRACE
 
-#include <common.h>
 #include <dm/devres.h>
 #include <linux/bug.h>
 #include <linux/err.h>
@@ -21,6 +20,7 @@
 #include <asm/io.h>
 #include <asm/gpio.h>
 #include <asm/hardware.h>
+#include <linux/printk.h>
 #include <mach/at91_matrix.h>
 #include <linux/list.h>
 #include <linux/usb/ch9.h>
@@ -228,7 +228,6 @@ static int write_fifo(struct at91_ep *ep, struct at91_request *req)
 	}
 
 	buf = req->req.buf + req->req.actual;
-	prefetch(buf);
 	total = req->req.length - req->req.actual;
 	if (ep->ep.maxpacket < total) {
 		count = ep->ep.maxpacket;
@@ -1429,7 +1428,7 @@ static const struct at91_udc_caps at91sam9261_udc_caps = {
 };
 #endif
 
-int usb_gadget_handle_interrupts(int index)
+int dm_usb_gadget_handle_interrupts(struct udevice *dev)
 {
 	struct at91_udc *udc = controller;
 

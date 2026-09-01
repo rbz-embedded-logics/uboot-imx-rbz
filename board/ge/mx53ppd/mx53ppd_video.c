@@ -2,13 +2,12 @@
 /*
  * Copyright 2017 General Electric Company
  *
- * Based on board/freescale/mx53loco/mx53loco_video.c:
+ * Based on board/nxp/mx53loco/mx53loco_video.c:
  *
  * Copyright (C) 2012 Freescale Semiconductor, Inc.
  * Fabio Estevam <fabio.estevam@freescale.com>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <linux/list.h>
 #include <asm/arch/iomux-mx53.h>
@@ -92,4 +91,3 @@ struct display_info_t const displays[] = {
 };
 
 size_t display_count = ARRAY_SIZE(displays);
-

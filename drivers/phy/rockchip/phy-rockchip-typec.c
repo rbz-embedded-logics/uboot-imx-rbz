@@ -8,7 +8,6 @@
  *         Kever Yang <kever.yang@rock-chips.com>
  */
 
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <asm/global_data.h>
@@ -285,7 +284,7 @@ DECLARE_GLOBAL_DATA_PTR;
  * clock 0: PLL 0 div 1
  * clock 1: PLL 1 div 2
  */
-#define CLK_PLL_CONFIG			0X30
+#define CLK_PLL_CONFIG			0x30
 #define CLK_PLL_MASK			0x33
 
 #define CMN_READY			BIT(0)
@@ -674,9 +673,9 @@ static int rockchip_tcphy_probe(struct udevice *dev)
 	unsigned int reg;
 	int index, ret;
 
-	priv->reg_base = (void __iomem *)dev_read_addr(dev);
-	if (IS_ERR(priv->reg_base))
-		return PTR_ERR(priv->reg_base);
+	priv->reg_base = dev_read_addr_ptr(dev);
+	if (!priv->reg_base)
+		return -EINVAL;
 
 	ret = dev_read_u32_index(dev, "reg", 1, &reg);
 	if (ret) {
@@ -789,7 +788,7 @@ U_BOOT_DRIVER(rockchip_tcphy_usb3_port) = {
 
 U_BOOT_DRIVER(rockchip_typec_phy) = {
 	.name	= "rockchip_typec_phy",
-	.id	= UCLASS_PHY,
+	.id	= UCLASS_NOP,
 	.of_match = rockchip_typec_phy_ids,
 	.probe = rockchip_tcphy_probe,
 	.bind = rockchip_tcphy_bind,

@@ -80,7 +80,7 @@
 		device_type = "soc";
 		interrupt-parent = <&intc>;
 		ranges = <0 0 0 0xffffffff>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 
 		clkmgr: clkmgr@ffd10000 {
 			compatible = "altr,clk-mgr";
@@ -228,7 +228,19 @@
 			interrupts = <0 96 4>;
 			fifo-depth = <0x400>;
 			resets = <&rst SDMMC_RESET>, <&rst SDMMC_OCP_RESET>;
-			u-boot,dm-pre-reloc;
+			bootph-all;
+			status = "disabled";
+		};
+
+		nand: nand@ffb90000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "altr,socfpga-denali-nand";
+			reg = <0xffb90000 0x10000>,
+			      <0xffb80000 0x1000>;
+			reg-names = "nand_data", "denali_reg";
+			interrupts = <0 97 4>;
+			resets = <&rst NAND_RESET>, <&rst NAND_OCP_RESET>;
 			status = "disabled";
 		};
 
@@ -255,7 +267,7 @@
 			compatible = "altr,rst-mgr";
 			reg = <0xffd11000 0x1000>;
 			altr,modrst-offset = <0x20>;
-			u-boot,dm-pre-reloc;
+			bootph-all;
 		};
 
 		sdr: sdr@f8000400 {
@@ -264,7 +276,7 @@
 			       <0xf8010000 0x190>,
 			       <0xf8011000 0x500>;
 			 resets = <&rst DDRSCH_RESET>;
-			 u-boot,dm-pre-reloc;
+			 bootph-all;
 		 };
 
 		spi0: spi@ffda4000 {
@@ -341,7 +353,7 @@
 			reg-io-width = <4>;
 			resets = <&rst UART0_RESET>;
 			clock-frequency = <100000000>;
-			u-boot,dm-pre-reloc;
+			bootph-all;
 			status = "disabled";
 		};
 

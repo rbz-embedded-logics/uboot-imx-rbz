@@ -3,23 +3,30 @@
  * Copyright 2020 NXP
  */
 
-#include <common.h>
 #include <dm.h>
 #include <asm/global_data.h>
 #include <dm/of_extra.h>
 #include <dm/test.h>
+#include <fdt_support.h>
+#include <mapmem.h>
+#include <smbios.h>
 #include <test/ut.h>
 
 DECLARE_GLOBAL_DATA_PTR;
+
+#define FDTDEC_MAX_SIZE  (2 * 1024 * 1024)
 
 static int dm_test_fdtdec_set_carveout(struct unit_test_state *uts)
 {
 	struct fdt_memory resv;
 	void *blob;
 	const fdt32_t *prop;
-	int blob_sz, len, offset;
+	int blob_sz, len, offset, fdt_sz;
 
-	blob_sz = fdt_totalsize(gd->fdt_blob) + 4096;
+	fdt_sz = fdt_totalsize(gd->fdt_blob);
+	ut_assert(fdt_sz > 0 && fdt_sz < FDTDEC_MAX_SIZE);
+
+	blob_sz = fdt_sz + 4096;
 	blob = malloc(blob_sz);
 	ut_assertnonnull(blob);
 
@@ -28,21 +35,18 @@ static int dm_test_fdtdec_set_carveout(struct unit_test_state *uts)
 
 	resv.start = 0x1000;
 	resv.end = 0x2000;
-	ut_assertok(fdtdec_set_carveout(blob, "/a-test",
-					"memory-region", 2, "test_resv1",
-					&resv));
+	ut_assertok(fdtdec_set_carveout(blob, "/a-test", "memory-region", 2,
+					&resv, "test_resv1", NULL, 0, 0));
 
 	resv.start = 0x10000;
 	resv.end = 0x20000;
-	ut_assertok(fdtdec_set_carveout(blob, "/a-test",
-					"memory-region", 1, "test_resv2",
-					&resv));
+	ut_assertok(fdtdec_set_carveout(blob, "/a-test", "memory-region", 1,
+					&resv, "test_resv2", NULL, 0, 0));
 
 	resv.start = 0x100000;
 	resv.end = 0x200000;
-	ut_assertok(fdtdec_set_carveout(blob, "/a-test",
-					"memory-region", 0, "test_resv3",
-					&resv));
+	ut_assertok(fdtdec_set_carveout(blob, "/a-test", "memory-region", 0,
+					&resv, "test_resv3", NULL, 0, 0));
 
 	offset = fdt_path_offset(blob, "/a-test");
 	ut_assert(offset > 0);
@@ -59,7 +63,7 @@ static int dm_test_fdtdec_set_carveout(struct unit_test_state *uts)
 	return 0;
 }
 DM_TEST(dm_test_fdtdec_set_carveout,
-	UT_TESTF_SCAN_PDATA | UT_TESTF_SCAN_FDT | UT_TESTF_FLAT_TREE);
+	UTF_SCAN_PDATA | UTF_SCAN_FDT | UTF_FLAT_TREE);
 
 static int dm_test_fdtdec_add_reserved_memory(struct unit_test_state *uts)
 {
@@ -67,10 +71,14 @@ static int dm_test_fdtdec_add_reserved_memory(struct unit_test_state *uts)
 	fdt_addr_t addr;
 	fdt_size_t size;
 	void *blob;
-	int blob_sz, parent, subnode;
+	unsigned long flags = FDTDEC_RESERVED_MEMORY_NO_MAP;
+	int blob_sz, parent, subnode, fdt_sz;
 	uint32_t phandle, phandle1;
 
-	blob_sz = fdt_totalsize(gd->fdt_blob) + 128;
+	fdt_sz = fdt_totalsize(gd->fdt_blob);
+	ut_assert(fdt_sz > 0 && fdt_sz < FDTDEC_MAX_SIZE);
+
+	blob_sz = fdt_sz + 128;
 	blob = malloc(blob_sz);
 	ut_assertnonnull(blob);
 
@@ -80,8 +88,8 @@ static int dm_test_fdtdec_add_reserved_memory(struct unit_test_state *uts)
 	/* Insert a memory region in /reserved-memory node */
 	resv.start = 0x1000;
 	resv.end = 0x1fff;
-	ut_assertok(fdtdec_add_reserved_memory(blob, "rsvd_region",
-					       &resv, &phandle, false));
+	ut_assertok(fdtdec_add_reserved_memory(blob, "rsvd_region", &resv,
+					       NULL, 0, &phandle, 0));
 
 	/* Test /reserve-memory and its subnode should exist */
 	parent = fdt_path_offset(blob, "/reserved-memory");
@@ -101,8 +109,8 @@ static int dm_test_fdtdec_add_reserved_memory(struct unit_test_state *uts)
 
 	resv.start = 0x2000;
 	resv.end = 0x2fff;
-	ut_assertok(fdtdec_add_reserved_memory(blob, "rsvd_region1",
-					       &resv, &phandle1, true));
+	ut_assertok(fdtdec_add_reserved_memory(blob, "rsvd_region1", &resv,
+					       NULL, 0, &phandle1, flags));
 	subnode = fdt_path_offset(blob, "/reserved-memory/rsvd_region1");
 	ut_assert(subnode > 0);
 
@@ -118,8 +126,8 @@ static int dm_test_fdtdec_add_reserved_memory(struct unit_test_state *uts)
 	 */
 	resv.start = 0x1000;
 	resv.end = 0x1fff;
-	ut_assertok(fdtdec_add_reserved_memory(blob, "rsvd_region2",
-					       &resv, &phandle1, false));
+	ut_assertok(fdtdec_add_reserved_memory(blob, "rsvd_region2", &resv,
+					       NULL, 0, &phandle1, 0));
 	subnode = fdt_path_offset(blob, "/reserved-memory/rsvd_region2");
 	ut_assert(subnode < 0);
 
@@ -131,4 +139,52 @@ static int dm_test_fdtdec_add_reserved_memory(struct unit_test_state *uts)
 	return 0;
 }
 DM_TEST(dm_test_fdtdec_add_reserved_memory,
-	UT_TESTF_SCAN_PDATA | UT_TESTF_SCAN_FDT | UT_TESTF_FLAT_TREE);
+	UTF_SCAN_PDATA | UTF_SCAN_FDT | UTF_FLAT_TREE);
+
+static int dm_test_fdt_chosen_smbios(struct unit_test_state *uts)
+{
+	void *blob;
+	ulong val;
+	struct smbios3_entry *entry;
+	int chosen, blob_sz, fdt_sz;
+	const fdt64_t *prop;
+
+	if (!CONFIG_IS_ENABLED(GENERATE_SMBIOS_TABLE)) {
+		return -EAGAIN;
+	}
+
+	fdt_sz = fdt_totalsize(gd->fdt_blob);
+	ut_assert(fdt_sz > 0 && fdt_sz < FDTDEC_MAX_SIZE);
+
+	blob_sz = fdt_sz + 4096;
+	blob = memalign(8, blob_sz);
+	ut_assertnonnull(blob);
+
+	/* Make a writable copy of the fdt blob */
+	ut_assertok(fdt_open_into(gd->fdt_blob, blob, blob_sz));
+
+	/* Mock SMBIOS table */
+	entry = map_sysmem(gd->arch.smbios_start, sizeof(struct smbios3_entry));
+	memcpy(entry->anchor, "_SM3_", 5);
+	entry->length = sizeof(struct smbios3_entry);
+	unmap_sysmem(entry);
+
+	/* Force fdt_chosen to run */
+	ut_assertok(fdt_chosen(blob));
+
+	chosen = fdt_path_offset(blob, "/chosen");
+	ut_assert(chosen >= 0);
+
+	/* Verify the property exists */
+	prop = fdt_getprop(blob, chosen, "smbios3-entrypoint", NULL);
+	ut_assertnonnull(prop);
+
+	/* Verify the property matches smbios_start */
+	val = fdt64_to_cpu(*prop);
+	ut_asserteq_64(gd->arch.smbios_start, val);
+
+	free(blob);
+
+	return 0;
+}
+DM_TEST(dm_test_fdt_chosen_smbios, UTF_SCAN_PDATA | UTF_SCAN_FDT);

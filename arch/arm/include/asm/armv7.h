@@ -142,6 +142,8 @@ bool armv7_boot_nonsec(void);
 unsigned int _nonsec_init(void);
 void _do_nonsec_entry(void *target_pc, unsigned long r0,
 		      unsigned long r1, unsigned long r2);
+void boot_jump_linux_via_optee(void *target_pc, unsigned long r1,
+			       unsigned long r2, unsigned long tee_entry);
 void _smp_pen(void);
 
 extern char __secure_start[];
@@ -156,6 +158,7 @@ void v7_arch_cp15_set_l2aux_ctrl(u32 l2auxctrl, u32 cpu_midr,
 				 u32 cpu_rev);
 void v7_arch_cp15_set_acr(u32 acr, u32 cpu_midr, u32 cpu_rev_comb,
 			  u32 cpu_variant, u32 cpu_rev);
+void v7_arch_cp15_allow_unaligned(void);
 #endif /* ! __ASSEMBLY__ */
 
 #endif

@@ -16,6 +16,7 @@ ENTRY(_start)
 SECTIONS
 {
 	. = ALIGN(4);
+	__image_copy_start = ADDR(.text);
 	.text : {
 		arch/riscv/cpu/start.o	(.text)
 		*(.text*)
@@ -32,16 +33,8 @@ SECTIONS
 	} > .spl_mem
 	. = ALIGN(4);
 
-	.got : {
-		__got_start = .;
-		*(.got.plt) *(.got)
-		__got_end = .;
-	} > .spl_mem
-
-	. = ALIGN(4);
-
-	.u_boot_list : {
-		KEEP(*(SORT(.u_boot_list*)));
+	__u_boot_list : {
+		KEEP(*(SORT(__u_boot_list*)));
 	} > .spl_mem
 
 	. = ALIGN(4);
@@ -50,29 +43,12 @@ SECTIONS
 		__binman_sym_start = .;
 		KEEP(*(SORT(.binman_sym*)));
 		__binman_sym_end = .;
+		. = ALIGN(8);
 	} > .spl_mem
-
-	. = ALIGN(4);
-
-	/DISCARD/ : { *(.rela.plt*) }
-	.rela.dyn : {
-		__rel_dyn_start = .;
-		*(.rela*)
-		__rel_dyn_end = .;
-	} > .spl_mem
-
-	. = ALIGN(4);
-
-	.dynsym : {
-		__dyn_sym_start = .;
-		*(.dynsym)
-		__dyn_sym_end = .;
-	} > .spl_mem
-
-	. = ALIGN(4);
 
 	_end = .;
 	_image_binary_end = .;
+	__image_copy_end = .;
 
 	.bss : {
 		__bss_start = .;
@@ -81,3 +57,6 @@ SECTIONS
 		__bss_end = .;
 	} > .bss_mem
 }
+
+ASSERT(_image_binary_end % 8 == 0, \
+       "_image_binary_end must be 8-byte aligned for device tree");

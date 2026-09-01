@@ -3,18 +3,11 @@
  * Copyright 2020-2021 NXP
  */
 
-#include <common.h>
 #include <asm/io.h>
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/iomux.h>
 
 static void *base = (void *)IOMUXC_BASE_ADDR;
-
-/*
- * iomuxc0 base address. In imx7ulp-pins.h,
- * the offsets of pins in iomuxc0 are from 0xD000,
- * so we set the base address to (0x4103D000 - 0xD000 = 0x41030000)
- */
 static void *base_mports = (void *)(0x280A1000);
 
 /*
@@ -30,7 +23,6 @@ void imx8ulp_iomux_setup_pad(iomux_cfg_t pad)
 		(pad & MUX_SEL_INPUT_MASK) >> MUX_SEL_INPUT_SHIFT;
 	u32 pad_ctrl_ofs = mux_ctrl_ofs;
 	u32 pad_ctrl = (pad & MUX_PAD_CTRL_MASK) >> MUX_PAD_CTRL_SHIFT;
-
 
 	if (mux_mode & IOMUX_CONFIG_MPORTS) {
 		mux_mode &= ~IOMUX_CONFIG_MPORTS;

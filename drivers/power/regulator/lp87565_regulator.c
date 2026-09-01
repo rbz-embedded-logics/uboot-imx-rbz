@@ -6,11 +6,9 @@
  * Keerthy <j-keerthy@ti.com>
  */
 
-#include <common.h>
 #include <fdtdec.h>
 #include <errno.h>
 #include <dm.h>
-#include <i2c.h>
 #include <log.h>
 #include <power/pmic.h>
 #include <power/regulator.h>
@@ -84,8 +82,8 @@ static int lp87565_buck_val2volt(int val)
 
 static int lp87565_buck_val(struct udevice *dev, int op, int *uV)
 {
-	unsigned int hex, adr;
-	int ret;
+	unsigned int adr;
+	int hex, ret;
 	struct dm_regulator_uclass_plat *uc_pdata;
 
 	uc_pdata = dev_get_uclass_plat(dev);
@@ -168,7 +166,6 @@ static int buck_get_enable(struct udevice *dev)
 {
 	bool enable = false;
 	int ret;
-
 
 	ret = lp87565_buck_enable(dev, PMIC_OP_GET, &enable);
 	if (ret)

@@ -5,7 +5,6 @@
  * Copyright 2011 Maxim Integrated Products
  */
 
-#include <common.h>
 #include <div64.h>
 #include <i2c.h>
 #include <i2s.h>
@@ -19,10 +18,10 @@
  * Writes value to a device register through i2c
  *
  * @param priv	Private data for driver
- * @param reg	reg number to be write
- * @param data	data to be writen to the above registor
+ * @param reg	reg number to be written
+ * @param data	data to be written to the above registor
  *
- * @return	int value 1 for change, 0 for no change or negative error code.
+ * Return:	int value 1 for change, 0 for no change or negative error code.
  */
 int maxim_i2c_write(struct maxim_priv *priv, unsigned int reg,
 		    unsigned char data)
@@ -39,14 +38,14 @@ int maxim_i2c_write(struct maxim_priv *priv, unsigned int reg,
  * @param reg	reg number to be read
  * @param data	address of read data to be stored
  *
- * @return	int value 0 for success, -1 in case of error.
+ * Return:	int value 0 for success, -1 in case of error.
  */
 unsigned int maxim_i2c_read(struct maxim_priv *priv, unsigned int reg,
 			    unsigned char *data)
 {
 	int ret;
 
-	return dm_i2c_read(priv->dev, reg, data, 1);
+	ret = dm_i2c_read(priv->dev, reg, data, 1);
 	if (ret != 0) {
 		debug("%s: Error while reading register %#04x\n",
 		      __func__, reg);
@@ -64,7 +63,7 @@ unsigned int maxim_i2c_read(struct maxim_priv *priv, unsigned int reg,
  * @param mask	register mask
  * @param value	new value
  *
- * @return int value 0 for success, non-zero error code.
+ * Return: int value 0 for success, non-zero error code.
  */
 int maxim_bic_or(struct maxim_priv *priv, unsigned int reg, unsigned char mask,
 		 unsigned char value)

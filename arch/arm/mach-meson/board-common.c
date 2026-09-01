@@ -3,7 +3,6 @@
  * (C) Copyright 2016 Beniamino Galvani <b.galvani@gmail.com>
  */
 
-#include <common.h>
 #include <cpu_func.h>
 #include <fastboot.h>
 #include <init.h>
@@ -22,10 +21,7 @@
 #include <efi_loader.h>
 #include <u-boot/crc.h>
 
-#if CONFIG_IS_ENABLED(FASTBOOT)
 #include <asm/psci.h>
-#include <fastboot.h>
-#endif
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -34,6 +30,7 @@ __weak int board_init(void)
 	return 0;
 }
 
+#ifndef CONFIG_SPL_BUILD
 int dram_init(void)
 {
 	const fdt64_t *val;
@@ -53,6 +50,7 @@ int dram_init(void)
 
 	return 0;
 }
+#endif
 
 __weak int meson_ft_board_setup(void *blob, struct bd_info *bd)
 {
@@ -149,41 +147,24 @@ int board_late_init(void)
 {
 	meson_set_boot_source();
 
+	if (CONFIG_IS_ENABLED(DFU) && CONFIG_IS_ENABLED(EFI_LOADER)) {
+		/* Generate dfu_string for EFI capsule updates */
+		meson_setup_capsule();
+	}
+
 	return meson_board_late_init();
 }
 
-#if CONFIG_IS_ENABLED(FASTBOOT)
-static unsigned int reboot_reason = REBOOT_REASON_NORMAL;
-
-int fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
+void reset_cpu(void)
 {
-	if (reason != FASTBOOT_REBOOT_REASON_BOOTLOADER)
-		return -ENOTSUPP;
-
-	reboot_reason = REBOOT_REASON_BOOTLOADER;
-
-	printf("Using reboot reason: 0x%x\n", reboot_reason);
-
-	return 0;
-}
-
-void reset_cpu(ulong addr)
-{
-	struct pt_regs regs;
-
-	regs.regs[0] = ARM_PSCI_0_2_FN_SYSTEM_RESET;
-	regs.regs[1] = reboot_reason;
-
-	printf("Rebooting with reason: 0x%lx\n", regs.regs[1]);
-
-	smc_call(&regs);
-
-	while (1)
+#if CONFIG_SPL_BUILD
+	/*
+	 * We do not have BL31 running yet, so no PSCI.
+	 * Instead, let the watchdog reset the board.
+	 */
+	for (;;)
 		;
-}
 #else
-void reset_cpu(ulong addr)
-{
 	psci_system_reset();
-}
 #endif
+}

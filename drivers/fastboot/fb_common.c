@@ -11,11 +11,11 @@
  */
 
 #include <bcb.h>
-#include <common.h>
 #include <command.h>
 #include <env.h>
 #include <fastboot.h>
-#include <net/fastboot.h>
+#include <net.h>
+#include <vsprintf.h>
 #include <image.h>
 
 /**
@@ -92,20 +92,41 @@ void fastboot_okay(const char *reason, char *response)
  */
 int __weak fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
 {
-#if CONFIG_IS_ENABLED(FASTBOOT_FLASH_MMC_DEV)
+	int ret;
 	static const char * const boot_cmds[] = {
 		[FASTBOOT_REBOOT_REASON_BOOTLOADER] = "bootonce-bootloader",
 		[FASTBOOT_REBOOT_REASON_FASTBOOTD] = "boot-fastboot",
 		[FASTBOOT_REBOOT_REASON_RECOVERY] = "boot-recovery"
 	};
 
+	int device = config_opt_enabled(CONFIG_FASTBOOT_FLASH_BLOCK,
+					CONFIG_FASTBOOT_FLASH_BLOCK_DEVICE_ID, -1);
+	if (device == -1) {
+		device = config_opt_enabled(CONFIG_FASTBOOT_FLASH_MMC,
+					    CONFIG_FASTBOOT_FLASH_MMC_DEV, -1);
+	}
+	const char *bcb_iface = config_opt_enabled(CONFIG_FASTBOOT_FLASH_BLOCK,
+						   CONFIG_FASTBOOT_FLASH_BLOCK_INTERFACE_NAME,
+						   "mmc");
+
+	if (device == -1)
+		return -EINVAL;
+
 	if (reason >= FASTBOOT_REBOOT_REASONS_COUNT)
 		return -EINVAL;
 
-	return bcb_write_reboot_reason(CONFIG_FASTBOOT_FLASH_MMC_DEV, "misc", boot_cmds[reason]);
-#else
-    return -EINVAL;
-#endif
+	ret = bcb_find_partition_and_load(bcb_iface, device, "misc");
+	if (ret)
+		goto out;
+
+	ret = bcb_set(BCB_FIELD_COMMAND, boot_cmds[reason]);
+	if (ret)
+		goto out;
+
+	ret = bcb_store();
+out:
+	bcb_reset();
+	return ret;
 }
 
 /**
@@ -135,7 +156,7 @@ void fastboot_boot(void)
 	s = env_get("fastboot_bootcmd");
 	if (s) {
 		run_command(s, CMD_FLAG_ENV);
-	} else {
+	} else if (IS_ENABLED(CONFIG_CMD_BOOTM)) {
 		static char boot_addr_start[20];
 #ifdef CONFIG_FSL_FASTBOOT
 		static char *const bootm_args[] = {
@@ -167,6 +188,44 @@ void fastboot_boot(void)
 }
 
 /**
+ * fastboot_handle_boot() - Shared implementation of system reaction to
+ * fastboot commands
+ *
+ * Making desceisions about device boot state (stay in fastboot, reboot
+ * to bootloader, reboot to OS, etc).
+ */
+void fastboot_handle_boot(int command, bool success)
+{
+	if (!success)
+		return;
+
+	switch (command) {
+	case FASTBOOT_COMMAND_BOOT:
+		fastboot_boot();
+#if CONFIG_IS_ENABLED(NET)
+		net_set_state(NETLOOP_SUCCESS);
+#endif
+		break;
+
+	case FASTBOOT_COMMAND_CONTINUE:
+#if CONFIG_IS_ENABLED(NET)
+		net_set_state(NETLOOP_SUCCESS);
+#endif
+		break;
+
+	case FASTBOOT_COMMAND_REBOOT:
+	case FASTBOOT_COMMAND_REBOOT_BOOTLOADER:
+	case FASTBOOT_COMMAND_REBOOT_FASTBOOTD:
+	case FASTBOOT_COMMAND_REBOOT_RECOVERY:
+#ifdef CONFIG_ANDROID_RECOVERY
+	case FASTBOOT_COMMAND_RECOVERY_FASTBOOT:
+#endif
+		do_reset(NULL, 0, 0, NULL);
+		break;
+	}
+}
+
+/**
  * fastboot_set_progress_callback() - set progress callback
  *
  * @progress: Pointer to progress callback
@@ -189,7 +248,12 @@ void fastboot_set_progress_callback(void (*progress)(const char *msg))
  */
 void fastboot_init(void *buf_addr, u32 buf_size)
 {
-#ifdef CONFIG_FSL_FASTBOOT
+#if IS_ENABLED(CONFIG_FASTBOOT_FLASH_BLOCK)
+	if (!strcmp(CONFIG_FASTBOOT_FLASH_BLOCK_INTERFACE_NAME, "mmc"))
+		printf("Warning: the fastboot block backend features are limited, consider using the MMC backend\n");
+#endif
+
+#if IS_ENABLED(CONFIG_FSL_FASTBOOT)
 	fastboot_buf_addr = buf_addr ? buf_addr :
 				       (void *)env_get_ulong("fastboot_buffer", 16, CONFIG_FASTBOOT_BUF_ADDR);
 #else
@@ -198,4 +262,5 @@ void fastboot_init(void *buf_addr, u32 buf_size)
 #endif
 	fastboot_buf_size = buf_size ? buf_size : CONFIG_FASTBOOT_BUF_SIZE;
 	fastboot_set_progress_callback(NULL);
+
 }

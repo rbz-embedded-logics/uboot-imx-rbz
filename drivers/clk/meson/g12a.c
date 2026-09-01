@@ -5,7 +5,6 @@
  * Author: Neil Armstrong <narmstrong@baylibre.com>
  */
 
-#include <common.h>
 #include <log.h>
 #include <asm/arch/clock-g12a.h>
 #include <asm/io.h>
@@ -120,7 +119,9 @@ static struct meson_gate gates[NUM_CLKS] = {
 	MESON_GATE(CLKID_SD_EMMC_C, HHI_GCLK_MPEG0, 26),
 	MESON_GATE(CLKID_ETH, HHI_GCLK_MPEG1, 3),
 	MESON_GATE(CLKID_UART1, HHI_GCLK_MPEG1, 16),
+	MESON_GATE(CLKID_PCIE_COMB, HHI_GCLK_MPEG1, 24),
 	MESON_GATE(CLKID_USB, HHI_GCLK_MPEG1, 25),
+	MESON_GATE(CLKID_PCIE_PHY, HHI_GCLK_MPEG1, 27),
 	MESON_GATE(CLKID_HTX_PCLK, HHI_GCLK_MPEG2, 4),
 	MESON_GATE(CLKID_USB1_DDR_BRIDGE, HHI_GCLK_MPEG2, 8),
 	MESON_GATE(CLKID_VPU_INTR, HHI_GCLK_MPEG2, 25),
@@ -915,8 +916,6 @@ static ulong meson_clk_set_rate_by_id(struct clk *clk, unsigned long id,
 			return -EINVAL;
 	case CLKID_PCIE_PLL:
 		return meson_pcie_pll_set_rate(clk, rate);
-
-		return 0;
 	case CLKID_VPU:
 		return meson_clk_set_rate_by_id(clk,
 				meson_mux_get_parent(clk, CLKID_VPU), rate,

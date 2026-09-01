@@ -8,11 +8,10 @@
  */
 
 #include <config.h>
-#include <common.h>
 #include <log.h>
 #include <memalign.h>
 #include <mmc.h>
-#include <sdhci.h>
+#include <asm/byteorder.h>
 #include <u-boot/sha256.h>
 #include "mmc_private.h"
 
@@ -73,7 +72,7 @@ int mmc_rpmb_request(struct mmc *mmc, const struct s_rpmb *s,
 {
 	struct mmc_cmd cmd = {0};
 	struct mmc_data data;
-	struct sdhci_host *host = mmc->priv;
+	int timeout_ms = 1000;
 	int ret;
 
 	ret = mmc_set_blockcount(mmc, count, is_rel_write);
@@ -88,9 +87,6 @@ int mmc_rpmb_request(struct mmc *mmc, const struct s_rpmb *s,
 	cmd.cmdarg = 0;
 	cmd.resp_type = MMC_RSP_R1;
 
-	if (host->quirks & SDHCI_QUIRK_BROKEN_R1B)
-		cmd.resp_type = MMC_RSP_R1;
-
 	data.src = (const char *)s;
 	data.blocks = count;
 	data.blocksize = MMC_MAX_BLOCK_LEN;
@@ -103,6 +99,15 @@ int mmc_rpmb_request(struct mmc *mmc, const struct s_rpmb *s,
 #endif
 		return 1;
 	}
+
+	/* poll for the ready status */
+	if (mmc_poll_for_busy(mmc, timeout_ms)) {
+#ifdef CONFIG_MMC_RPMB_TRACE
+		printf("%s:mmc is busy!\n", __func__);
+#endif
+		return 1;
+	}
+
 	return 0;
 }
 int mmc_rpmb_response(struct mmc *mmc, struct s_rpmb *s,
@@ -460,10 +465,24 @@ int mmc_rpmb_route_frames(struct mmc *mmc, void *req, unsigned long reqlen,
 	 * and possibly just delay an eventual error which will be harder
 	 * to track down.
 	 */
+	void *rpmb_data = NULL;
+	int ret;
 
 	if (reqlen % sizeof(struct s_rpmb) || rsplen % sizeof(struct s_rpmb))
 		return -EINVAL;
 
-	return rpmb_route_frames(mmc, req, reqlen / sizeof(struct s_rpmb),
-				 rsp, rsplen / sizeof(struct s_rpmb));
+	if (!IS_ALIGNED((uintptr_t)req, ARCH_DMA_MINALIGN)) {
+		/* Memory alignment is required by MMC driver */
+		rpmb_data = malloc(reqlen);
+		if (!rpmb_data)
+			return -ENOMEM;
+
+		memcpy(rpmb_data, req, reqlen);
+		req = rpmb_data;
+	}
+
+	ret = rpmb_route_frames(mmc, req, reqlen / sizeof(struct s_rpmb),
+				rsp, rsplen / sizeof(struct s_rpmb));
+	free(rpmb_data);
+	return ret;
 }

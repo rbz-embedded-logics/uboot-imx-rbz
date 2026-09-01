@@ -6,7 +6,7 @@
  *
  * This unit test checks the following protocol services:
  * InstallProtocolInterface, UninstallProtocolInterface,
- * InstallMultipleProtocolsInterfaces, UninstallMultipleProtocolsInterfaces,
+ * InstallMultipleProtocolInterfaces, UninstallMultipleProtocolInterfaces,
  * HandleProtocol, ProtocolsPerHandle,
  * LocateHandle, LocateHandleBuffer.
  */
@@ -79,6 +79,8 @@ static int setup(const efi_handle_t img_handle,
 	efi_status_t ret;
 	efi_handle_t handle;
 
+	handle1 = NULL;
+	handle2 = NULL;
 	boottime = systable->boottime;
 
 	ret = boottime->install_protocol_interface(&handle1, &guid3,
@@ -187,7 +189,7 @@ static int execute(void)
 	}
 
 	/*
-	 * Test error handling in UninstallMultipleProtocols
+	 * Test error handling in UninstallMultipleProtocolInterfaces
 	 *
 	 * These are the installed protocol interfaces on handle 2:
 	 *
@@ -238,7 +240,7 @@ static int execute(void)
 		efi_st_error("LocateHandleBuffer failed to locate new handle\n");
 		return EFI_ST_FAILURE;
 	}
-	/* Clear the buffer, we are reusing it it the next step. */
+	/* Clear the buffer, we are reusing it in the next step. */
 	boottime->set_mem(buffer, sizeof(efi_handle_t) * buffer_size, 0);
 
 	/*
@@ -287,7 +289,7 @@ static int execute(void)
 	}
 
 	/*
-	 * Test UninstallMultipleProtocols
+	 * Test UninstallMultipleProtocolInterfaces
 	 */
 	ret = boottime->uninstall_multiple_protocol_interfaces(
 						handle2,

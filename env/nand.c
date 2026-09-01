@@ -13,7 +13,6 @@
  * Andreas Heppel <aheppel@sysgo.de>
  */
 
-#include <common.h>
 #include <command.h>
 #include <env.h>
 #include <env_internal.h>
@@ -27,14 +26,10 @@
 #include <u-boot/crc.h>
 
 #if defined(CONFIG_CMD_SAVEENV) && defined(CONFIG_CMD_NAND) && \
-		!defined(CONFIG_SPL_BUILD)
+		!defined(CONFIG_XPL_BUILD)
 #define CMD_SAVEENV
-#elif defined(CONFIG_ENV_OFFSET_REDUND) && !defined(CONFIG_SPL_BUILD)
+#elif defined(CONFIG_ENV_OFFSET_REDUND) && !defined(CONFIG_XPL_BUILD)
 #error CONFIG_ENV_OFFSET_REDUND must have CONFIG_CMD_SAVEENV & CONFIG_CMD_NAND
-#endif
-
-#ifndef CONFIG_ENV_RANGE
-#define CONFIG_ENV_RANGE	CONFIG_ENV_SIZE
 #endif
 
 #if defined(ENV_IS_EMBEDDED)
@@ -107,8 +102,7 @@ static int env_nand_init(void)
 	gd->env_addr = (ulong)env_ptr->data;
 
 #else /* ENV_IS_EMBEDDED || CONFIG_NAND_ENV_DST */
-	gd->env_addr	= (ulong)&default_environment[0];
-	gd->env_valid	= ENV_VALID;
+	gd->env_valid	= ENV_INVALID;
 #endif /* ENV_IS_EMBEDDED || CONFIG_NAND_ENV_DST */
 
 	return 0;
@@ -154,7 +148,7 @@ static int writeenv(size_t offset, u_char *buf)
 
 struct nand_env_location {
 	const char *name;
-	nand_erase_options_t erase_opts;
+	const nand_erase_options_t erase_opts;
 };
 
 static int erase_and_write_env(const struct nand_env_location *location,
@@ -183,20 +177,24 @@ static int env_nand_save(void)
 	int	ret = 0;
 	ALLOC_CACHE_ALIGN_BUFFER(env_t, env_new, 1);
 	int	env_idx = 0;
-	static struct nand_env_location location[2] = {0};
-
-	location[0].name = "NAND";
-	location[0].erase_opts.length = CONFIG_ENV_RANGE;
-	location[0].erase_opts.offset = env_get_offset(CONFIG_ENV_OFFSET);
-
+	static const struct nand_env_location location[] = {
+		{
+			.name = "NAND",
+			.erase_opts = {
+				.length = CONFIG_ENV_RANGE,
+				.offset = CONFIG_ENV_OFFSET,
+			},
+		},
 #ifdef CONFIG_ENV_OFFSET_REDUND
-	location[1].name = "redundant NAND";
-	location[1].erase_opts.length = CONFIG_ENV_RANGE;
-	location[1].erase_opts.offset = CONFIG_ENV_OFFSET_REDUND;
+		{
+			.name = "redundant NAND",
+			.erase_opts = {
+				.length = CONFIG_ENV_RANGE,
+				.offset = CONFIG_ENV_OFFSET_REDUND,
+			},
+		},
 #endif
-
-	if (CONFIG_ENV_RANGE < CONFIG_ENV_SIZE)
-		return 1;
+	};
 
 	ret = env_export(env_new);
 	if (ret)
@@ -226,7 +224,7 @@ static int env_nand_save(void)
 }
 #endif /* CMD_SAVEENV */
 
-#if defined(CONFIG_SPL_BUILD)
+#if defined(CONFIG_XPL_BUILD)
 static int readenv(size_t offset, u_char *buf)
 {
 	return nand_spl_load_image(offset, CONFIG_ENV_SIZE, buf);
@@ -267,7 +265,7 @@ static int readenv(size_t offset, u_char *buf)
 
 	return 0;
 }
-#endif /* #if defined(CONFIG_SPL_BUILD) */
+#endif /* #if defined(CONFIG_XPL_BUILD) */
 
 #ifdef CONFIG_ENV_OFFSET_OOB
 int get_nand_env_oob(struct mtd_info *mtd, unsigned long *result)
@@ -277,7 +275,7 @@ int get_nand_env_oob(struct mtd_info *mtd, unsigned long *result)
 	int ret;
 
 	ops.datbuf	= NULL;
-	ops.mode	= MTD_OOB_AUTO;
+	ops.mode	= MTD_OPS_AUTO_OOB;
 	ops.ooboffs	= 0;
 	ops.ooblen	= ENV_OFFSET_SIZE;
 	ops.oobbuf	= (void *)oob_buf;
@@ -320,7 +318,7 @@ static int env_nand_load(void)
 		goto done;
 	}
 
-	read1_fail = readenv(env_get_offset(CONFIG_ENV_OFFSET), (u_char *) tmp_env1);
+	read1_fail = readenv(CONFIG_ENV_OFFSET, (u_char *) tmp_env1);
 	read2_fail = readenv(CONFIG_ENV_OFFSET_REDUND, (u_char *) tmp_env2);
 
 	ret = env_import_redund((char *)tmp_env1, read1_fail, (char *)tmp_env2,
@@ -359,7 +357,7 @@ static int env_nand_load(void)
 	}
 #endif
 
-	ret = readenv(env_get_offset(CONFIG_ENV_OFFSET), (u_char *)buf);
+	ret = readenv(CONFIG_ENV_OFFSET, (u_char *)buf);
 	if (ret) {
 		env_set_default("readenv() failed", 0);
 		return -EIO;

@@ -3,7 +3,8 @@
  * Copyright 2014 Google Inc.
  */
 
-#include <common.h>
+#define LOG_CATEGORY UCLASS_DISPLAY
+
 #include <dm.h>
 #include <display.h>
 #include <edid.h>
@@ -58,9 +59,7 @@ int display_read_timing(struct udevice *dev, struct display_timing *timing)
 	if (ops && ops->read_timing)
 		return ops->read_timing(dev, timing);
 
-	if (!ops || !ops->read_edid)
-		return -ENOSYS;
-	ret = ops->read_edid(dev, buf, sizeof(buf));
+	ret = display_read_edid(dev, buf, sizeof(buf));
 	if (ret < 0)
 		return ret;
 

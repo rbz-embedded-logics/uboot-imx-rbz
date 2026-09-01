@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright (C) 2019 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2019 Texas Instruments Incorporated - https://www.ti.com/
  */
 
 #include <asm/io.h>
 #include <clk.h>
-#include <common.h>
 #include <dm.h>
 #include <dm/device_compat.h>
 #include <linux/bitops.h>
@@ -18,7 +17,7 @@
 static int ti_j721e_ufs_probe(struct udevice *dev)
 {
 	void __iomem *base;
-	unsigned int clock;
+	unsigned long clock;
 	struct clk clk;
 	u32 reg = 0;
 	int ret;
@@ -30,9 +29,9 @@ static int ti_j721e_ufs_probe(struct udevice *dev)
 	}
 
 	clock = clk_get_rate(&clk);
-	if (IS_ERR_VALUE(clock)) {
+	if ((long)clock <= 0) {
 		dev_err(dev, "failed to get rate\n");
-		return ret;
+		return clock ? clock : -EIO;
 	}
 
 	base = dev_remap_addr_index(dev, 0);

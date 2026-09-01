@@ -4,7 +4,6 @@
  * Nobuhiro Iwamatsu <iwamatsu@nigauri.org>
  */
 
-#include <common.h>
 #include <ide.h>
 #include <init.h>
 #include <net.h>
@@ -15,11 +14,6 @@
 int checkboard(void)
 {
 	puts("BOARD: Renesas Solutions R2D Plus\n");
-	return 0;
-}
-
-int board_init(void)
-{
 	return 0;
 }
 

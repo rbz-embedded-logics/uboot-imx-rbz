@@ -12,7 +12,6 @@
  *
  */
 
-#include <common.h>
 #include <dm.h>
 #include <panel.h>
 #include <spi.h>
@@ -23,7 +22,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #define HX8238D_OUTPUT_CTRL_ADDR        0x01
 #define HX8238D_LCD_AC_CTRL_ADDR        0x02
 #define HX8238D_POWER_CTRL_1_ADDR       0x03
-#define HX8238D_DATA_CLR_CTRL_ADDR      0X04
+#define HX8238D_DATA_CLR_CTRL_ADDR      0x04
 #define HX8238D_FUNCTION_CTRL_ADDR      0x05
 #define HX8238D_LED_CTRL_ADDR           0x08
 #define HX8238D_CONT_BRIGHT_CTRL_ADDR   0x0A
@@ -191,7 +190,7 @@ U_BOOT_DRIVER(hx8238d) = {
 	.name = "hx8238d",
 	.id = UCLASS_PANEL,
 	.of_match = hx8238d_ids,
-	.ofdata_to_platdata = hx8238d_ofdata_to_platdata,
+	.of_to_plat = hx8238d_ofdata_to_platdata,
 	.probe = hx8238d_probe,
-	.priv_auto_alloc_size = sizeof(struct hx8238d_priv),
+	.priv_auto = sizeof(struct hx8238d_priv),
 };

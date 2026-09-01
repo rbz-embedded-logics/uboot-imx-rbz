@@ -7,7 +7,6 @@
  */
 
 #include <config.h>
-#include <common.h>
 #include <blk.h>
 #include <dm.h>
 #include <part.h>
@@ -15,7 +14,7 @@
 #include <linux/math64.h>
 #include "mmc_private.h"
 
-static ulong mmc_erase_t(struct mmc *mmc, ulong start, lbaint_t blkcnt)
+static ulong mmc_erase_t(struct mmc *mmc, ulong start, lbaint_t blkcnt, u32 args)
 {
 	struct mmc_cmd cmd;
 	ulong end;
@@ -52,7 +51,7 @@ static ulong mmc_erase_t(struct mmc *mmc, ulong start, lbaint_t blkcnt)
 		goto err_out;
 
 	cmd.cmdidx = MMC_CMD_ERASE;
-	cmd.cmdarg = MMC_ERASE_ARG;
+	cmd.cmdarg = args ? args : MMC_ERASE_ARG;
 	cmd.resp_type = MMC_RSP_R1b;
 
 	err = mmc_send_cmd(mmc, &cmd, NULL);
@@ -77,15 +76,17 @@ ulong mmc_berase(struct blk_desc *block_dev, lbaint_t start, lbaint_t blkcnt)
 #endif
 	int dev_num = block_dev->devnum;
 	int err = 0;
-	u32 start_rem, blkcnt_rem;
+	u32 start_rem, blkcnt_rem, erase_args = 0;
 	struct mmc *mmc = find_mmc_device(dev_num);
 	lbaint_t blk = 0, blk_r = 0;
 	int timeout_ms = 1000;
+	u32 grpcnt;
+
 
 	if (!mmc)
 		return -1;
 
-	err = blk_select_hwpart_devnum(IF_TYPE_MMC, dev_num,
+	err = blk_select_hwpart_devnum(UCLASS_MMC, dev_num,
 				       block_dev->hwpart);
 	if (err < 0)
 		return -1;
@@ -97,13 +98,25 @@ ulong mmc_berase(struct blk_desc *block_dev, lbaint_t start, lbaint_t blkcnt)
 	 */
 	err = div_u64_rem(start, mmc->erase_grp_size, &start_rem);
 	err = div_u64_rem(blkcnt, mmc->erase_grp_size, &blkcnt_rem);
-	if (start_rem || blkcnt_rem)
-		printf("\n\nCaution! Your devices Erase group is 0x%x\n"
-		       "The erase range would be change to "
-		       "0x" LBAF "~0x" LBAF "\n\n",
-		       mmc->erase_grp_size, start & ~(mmc->erase_grp_size - 1),
-		       ((start + blkcnt + mmc->erase_grp_size)
-		       & ~(mmc->erase_grp_size - 1)) - 1);
+	if (start_rem || blkcnt_rem) {
+		if (mmc->can_trim) {
+			/* Trim function applies the erase operation to write
+			 * blocks instead of erase groups.
+			 */
+			erase_args = MMC_TRIM_ARG;
+		} else {
+			/* The card ignores all LSB's below the erase group
+			 * size, rounding down the addess to a erase group
+			 * boundary.
+			 */
+			printf("\n\nCaution! Your devices Erase group is 0x%x\n"
+			       "The erase range would be change to "
+			       "0x" LBAF "~0x" LBAF "\n\n",
+			       mmc->erase_grp_size, start & ~(mmc->erase_grp_size - 1),
+			       ((start + blkcnt + mmc->erase_grp_size - 1)
+			       & ~(mmc->erase_grp_size - 1)) - 1);
+		}
+	}
 
 	while (blk < blkcnt) {
 		if (IS_SD(mmc) && mmc->ssr.au) {
@@ -112,8 +125,17 @@ ulong mmc_berase(struct blk_desc *block_dev, lbaint_t start, lbaint_t blkcnt)
 		} else {
 			blk_r = ((blkcnt - blk) > mmc->erase_grp_size) ?
 				mmc->erase_grp_size : (blkcnt - blk);
+
+			grpcnt = (blkcnt - blk) / mmc->erase_grp_size;
+			/* Max 2GB per spec */
+			if ((blkcnt - blk) > 0x400000)
+				blk_r = 0x400000;
+			else if (grpcnt)
+				blk_r = grpcnt * mmc->erase_grp_size;
+			else
+				blk_r = blkcnt - blk;
 		}
-		err = mmc_erase_t(mmc, start + blk, blk_r);
+		err = mmc_erase_t(mmc, start + blk, blk_r, erase_args);
 		if (err)
 			break;
 
@@ -133,6 +155,7 @@ static ulong mmc_write_blocks(struct mmc *mmc, lbaint_t start,
 	struct mmc_cmd cmd;
 	struct mmc_data data;
 	int timeout_ms = 1000;
+	int err;
 
 	if ((start + blkcnt) > mmc_get_blk_desc(mmc)->lba) {
 		printf("MMC: block number 0x" LBAF " exceeds max(0x" LBAF ")\n",
@@ -159,9 +182,13 @@ static ulong mmc_write_blocks(struct mmc *mmc, lbaint_t start,
 	data.blocksize = mmc->write_bl_len;
 	data.flags = MMC_DATA_WRITE;
 
-	if (mmc_send_cmd(mmc, &cmd, &data)) {
+	err = mmc_send_cmd(mmc, &cmd, &data);
+	if (err) {
 		printf("mmc write failed\n");
-		return 0;
+		/*
+		 * Don't return 0 here since the emmc will still be in data
+		 * transfer mode continue to send the STOP_TRANSMISSION command
+		 */
 	}
 
 	/* SPI multiblock writes terminate using a special
@@ -179,6 +206,9 @@ static ulong mmc_write_blocks(struct mmc *mmc, lbaint_t start,
 
 	/* Waiting for the ready status */
 	if (mmc_poll_for_busy(mmc, timeout_ms))
+		return 0;
+
+	if (err)
 		return 0;
 
 	return blkcnt;
@@ -203,7 +233,7 @@ ulong mmc_bwrite(struct blk_desc *block_dev, lbaint_t start, lbaint_t blkcnt,
 	if (!mmc)
 		return 0;
 
-	err = blk_select_hwpart_devnum(IF_TYPE_MMC, dev_num, block_dev->hwpart);
+	err = blk_select_hwpart_devnum(UCLASS_MMC, dev_num, block_dev->hwpart);
 	if (err < 0)
 		return 0;
 

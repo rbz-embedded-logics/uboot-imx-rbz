@@ -3,7 +3,6 @@
  * Copyright (C) 2019 Fraunhofer AISEC,
  * Lukas Auer <lukas.auer@aisec.fraunhofer.de>
  */
-#include <common.h>
 #include <cpu_func.h>
 #include <hang.h>
 #include <init.h>
@@ -11,6 +10,7 @@
 #include <spl.h>
 #include <asm/global_data.h>
 #include <asm/smp.h>
+#include <asm/system.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -27,7 +27,7 @@ __weak void board_init_f(ulong dummy)
 	if (ret)
 		panic("spl_early_init() failed: %d\n", ret);
 
-	arch_cpu_init_dm();
+	riscv_cpu_setup();
 
 	preloader_console_init();
 
@@ -36,7 +36,7 @@ __weak void board_init_f(ulong dummy)
 		panic("spl_board_init_f() failed: %d\n", ret);
 }
 
-void __noreturn jump_to_image_no_args(struct spl_image_info *spl_image)
+void __noreturn jump_to_image(struct spl_image_info *spl_image)
 {
 	typedef void __noreturn (*image_entry_riscv_t)(ulong hart, void *dtb);
 	void *fdt_blob;

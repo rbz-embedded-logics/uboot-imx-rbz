@@ -1,6 +1,6 @@
 config CLK_AT91
 	bool "AT91 clock drivers"
-	depends on CLK
+	depends on CLK && ARCH_AT91
 	select MISC
 	help
 	  This option is used to enable the AT91 clock driver.
@@ -60,4 +60,11 @@ config AT91_SAM9X60_PLL
 	depends on CLK_AT91
 	help
 	  This option is used to enable the AT91 SAM9X60's PLL clock
+	  driver.
+
+config AT91_SAM9X60_USB
+	bool "USB Clock support for SAM9X60 SoCs"
+	depends on CLK_AT91
+	help
+	  This option is used to enable the AT91 SAM9X60's USB clock
 	  driver.

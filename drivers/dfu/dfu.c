@@ -6,7 +6,6 @@
  * author: Lukasz Majewski <l.majewski@samsung.com>
  */
 
-#include <common.h>
 #include <env.h>
 #include <errno.h>
 #include <log.h>
@@ -17,6 +16,7 @@
 #include <hash.h>
 #include <linux/list.h>
 #include <linux/compiler.h>
+#include <linux/printk.h>
 
 LIST_HEAD(dfu_list);
 static int dfu_alt_num;
@@ -27,6 +27,21 @@ static unsigned long dfu_timeout = 0;
 #endif
 
 bool dfu_reinit_needed = false;
+bool dfu_alt_info_changed = false;
+
+static int on_dfu_alt_info(const char *name, const char *value, enum env_op op,
+			   int flags)
+{
+	switch (op) {
+	case env_op_create:
+	case env_op_overwrite:
+	case env_op_delete:
+		dfu_alt_info_changed = true;
+		break;
+	}
+	return 0;
+}
+U_BOOT_ENV_CALLBACK(dfu_alt_info, on_dfu_alt_info);
 
 /*
  * The purpose of the dfu_flush_callback() function is to
@@ -41,6 +56,14 @@ __weak void dfu_flush_callback(struct dfu_entity *dfu)
  * provide callback for dfu user
  */
 __weak void dfu_initiated_callback(struct dfu_entity *dfu)
+{
+}
+
+/*
+ * The purpose of the dfu_error_callback() function is to
+ * provide callback for dfu user
+ */
+__weak void dfu_error_callback(struct dfu_entity *dfu, const char *msg)
 {
 }
 
@@ -115,17 +138,19 @@ int dfu_config_interfaces(char *env)
 	s = env;
 	while (s) {
 		ret = -EINVAL;
-		i = strsep(&s, " ");
+		i = strsep(&s, " \t");
 		if (!i)
 			break;
+		s = skip_spaces(s);
 		d = strsep(&s, "=");
 		if (!d)
 			break;
 		a = strsep(&s, "&");
 		if (!a)
-			a = s;
+			a = d;
 		do {
 			part = strsep(&a, ";");
+			part = skip_spaces(part);
 			ret = dfu_alt_add(dfu, i, d, part);
 			if (ret)
 				return ret;
@@ -142,6 +167,7 @@ int dfu_init_env_entities(char *interface, char *devstr)
 	int ret = 0;
 
 	dfu_reinit_needed = false;
+	dfu_alt_info_changed = false;
 
 #ifdef CONFIG_SET_DFU_ALT_INFO
 	set_dfu_alt_info(interface, devstr);
@@ -159,7 +185,7 @@ int dfu_init_env_entities(char *interface, char *devstr)
 		ret = dfu_config_entities(env_bkp, interface, devstr);
 
 	if (ret) {
-		pr_err("DFU entities configuration failed!\n");
+		pr_err("DFU entities configuration failed: %d\n", ret);
 		pr_err("(partition table does not match dfu_alt_info?)\n");
 		goto done;
 	}
@@ -342,6 +368,7 @@ int dfu_write(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 		printf("%s: Wrong sequence number! [%d] [%d]\n",
 		       __func__, dfu->i_blk_seq_num, blk_seq_num);
 		dfu_transaction_cleanup(dfu);
+		dfu_error_callback(dfu, "Wrong sequence number");
 		return -1;
 	}
 
@@ -366,6 +393,7 @@ int dfu_write(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 		ret = dfu_write_buffer_drain(dfu);
 		if (ret) {
 			dfu_transaction_cleanup(dfu);
+			dfu_error_callback(dfu, "DFU write error");
 			return ret;
 		}
 	}
@@ -375,6 +403,7 @@ int dfu_write(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 		pr_err("Buffer overflow! (0x%p + 0x%x > 0x%p)\n", dfu->i_buf,
 		      size, dfu->i_buf_end);
 		dfu_transaction_cleanup(dfu);
+		dfu_error_callback(dfu, "Buffer overflow");
 		return -1;
 	}
 
@@ -386,6 +415,7 @@ int dfu_write(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 		ret = dfu_write_buffer_drain(dfu);
 		if (ret) {
 			dfu_transaction_cleanup(dfu);
+			dfu_error_callback(dfu, "DFU write error");
 			return ret;
 		}
 	}
@@ -487,11 +517,29 @@ int dfu_read(struct dfu_entity *dfu, void *buf, int size, int blk_seq_num)
 static int dfu_fill_entity(struct dfu_entity *dfu, char *s, int alt,
 			   char *interface, char *devstr)
 {
+	char *argv[DFU_MAX_ENTITY_ARGS];
+	int argc, ret;
 	char *st;
 
 	debug("%s: %s interface: %s dev: %s\n", __func__, s, interface, devstr);
-	st = strsep(&s, " ");
-	strcpy(dfu->name, st);
+	st = strsep(&s, " \t");
+	strlcpy(dfu->name, st, DFU_NAME_SIZE);
+
+	/* Parse arguments */
+	for (argc = 0; s && argc < DFU_MAX_ENTITY_ARGS; argc++) {
+		s = skip_spaces(s);
+		if (!*s)
+			break;
+		argv[argc] = strsep(&s, " \t");
+	}
+
+	if (argc == DFU_MAX_ENTITY_ARGS && s) {
+		s = skip_spaces(s);
+		if (*s) {
+			log_err("Too many arguments for %s\n", dfu->name);
+			return -EINVAL;
+		}
+	}
 
 	dfu->alt = alt;
 	dfu->max_buf_size = 0;
@@ -499,27 +547,37 @@ static int dfu_fill_entity(struct dfu_entity *dfu, char *s, int alt,
 
 	/* Specific for mmc device */
 	if (strcmp(interface, "mmc") == 0) {
-		if (dfu_fill_entity_mmc(dfu, devstr, s))
-			return -1;
+		ret = dfu_fill_entity_mmc(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
 	} else if (strcmp(interface, "mtd") == 0) {
-		if (dfu_fill_entity_mtd(dfu, devstr, s))
-			return -1;
+		ret = dfu_fill_entity_mtd(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
 	} else if (strcmp(interface, "nand") == 0) {
-		if (dfu_fill_entity_nand(dfu, devstr, s))
-			return -1;
+		ret = dfu_fill_entity_nand(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
 	} else if (strcmp(interface, "ram") == 0) {
-		if (dfu_fill_entity_ram(dfu, devstr, s))
-			return -1;
+		ret = dfu_fill_entity_ram(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
 	} else if (strcmp(interface, "sf") == 0) {
-		if (dfu_fill_entity_sf(dfu, devstr, s))
-			return -1;
+		ret = dfu_fill_entity_sf(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
 	} else if (strcmp(interface, "virt") == 0) {
-		if (dfu_fill_entity_virt(dfu, devstr, s))
-			return -1;
+		ret = dfu_fill_entity_virt(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
+	} else if (strcmp(interface, "scsi") == 0) {
+		ret = dfu_fill_entity_scsi(dfu, devstr, argv, argc);
+		if (ret)
+			return ret;
 	} else {
 		printf("%s: Device %s not (yet) supported!\n",
 		       __func__,  interface);
-		return -1;
+		return -EOPNOTSUPP;
 	}
 	dfu_get_buf(dfu);
 
@@ -573,12 +631,12 @@ int dfu_alt_add(struct dfu_entity *dfu, char *interface, char *devstr, char *s)
 	int ret;
 
 	if (alt_num_cnt >= dfu_alt_num)
-		return -1;
+		return -EINVAL;
 
 	p_dfu = &dfu[alt_num_cnt];
 	ret = dfu_fill_entity(p_dfu, s, alt_num_cnt, interface, devstr);
 	if (ret)
-		return -1;
+		return ret;
 
 	list_add_tail(&p_dfu->list, &dfu_list);
 	alt_num_cnt++;
@@ -594,15 +652,15 @@ int dfu_config_entities(char *env, char *interface, char *devstr)
 
 	ret = dfu_alt_init(dfu_find_alt_num(env), &dfu);
 	if (ret)
-		return -1;
+		return ret;
 
 	for (i = 0; i < dfu_alt_num; i++) {
 		s = strsep(&env, ";");
+		s = skip_spaces(s);
 		ret = dfu_alt_add(dfu, interface, devstr, s);
-		if (ret) {
+		if (ret)
 			/* We will free "dfu" in dfu_free_entities() */
-			return -1;
-		}
+			return ret;
 	}
 
 	return 0;
@@ -611,7 +669,7 @@ int dfu_config_entities(char *env, char *interface, char *devstr)
 const char *dfu_get_dev_type(enum dfu_device_type t)
 {
 	const char *const dev_t[] = {NULL, "eMMC", "OneNAND", "NAND", "RAM",
-				     "SF", "MTD", "VIRT"};
+				     "SF", "MTD", "VIRT", "SCSI"};
 	return dev_t[t];
 }
 
@@ -723,6 +781,7 @@ int dfu_write_from_mem_addr(struct dfu_entity *dfu, void *buf, int size)
 	ret = dfu_flush(dfu, NULL, 0, i);
 	if (ret)
 		pr_err("DFU flush failed!");
+	puts("\n");
 
 	return ret;
 }

@@ -5,7 +5,7 @@
  *
  */
 
-#include <common.h>
+#include <config.h>
 #include <clk.h>
 #include <dm.h>
 #include <log.h>
@@ -21,12 +21,13 @@
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/clock.h>
 #include <asm/mach-imx/spi.h>
+#include <linux/printk.h>
 #include <asm/mach-imx/sys_proto.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
 /* MX35 and older is CSPI */
-#if defined(CONFIG_MX25) || defined(CONFIG_MX31) || defined(CONFIG_MX35)
+#if defined(CONFIG_MX31)
 #define MXC_CSPI
 struct cspi_regs {
 	u32 rxdata;
@@ -51,17 +52,10 @@ struct cspi_regs {
 #define MXC_CSPICTRL_RXOVF		BIT(6)
 #define MXC_CSPIPERIOD_32KHZ		BIT(15)
 #define MAX_SPI_BYTES			4
-#if defined(CONFIG_MX25) || defined(CONFIG_MX35)
-#define MXC_CSPICTRL_CHIPSELECT(x)	(((x) & 0x3) << 12)
-#define MXC_CSPICTRL_BITCOUNT(x)	(((x) & 0xfff) << 20)
-#define MXC_CSPICTRL_TC			BIT(7)
-#define MXC_CSPICTRL_MAXBITS		0xfff
-#else	/* MX31 */
 #define MXC_CSPICTRL_CHIPSELECT(x)	(((x) & 0x3) << 24)
 #define MXC_CSPICTRL_BITCOUNT(x)	(((x) & 0x1f) << 8)
 #define MXC_CSPICTRL_TC			BIT(8)
 #define MXC_CSPICTRL_MAXBITS		0x1f
-#endif
 
 #else	/* MX51 and newer is ECSPI */
 #define MXC_ECSPI
@@ -101,14 +95,6 @@ struct cspi_regs {
 #define MXC_CSPICON_CTL		20 /* inactive state of SCLK */
 #endif
 
-#ifdef CONFIG_MX27
-/* i.MX27 has a completely wrong register layout and register definitions in the
- * datasheet, the correct one is in the Freescale's Linux driver */
-
-#error "i.MX27 CSPI not supported due to drastic differences in register definitions" \
-"See linux mxc_spi driver from Freescale for details."
-#endif
-
 __weak int board_spi_cs_gpio(unsigned bus, unsigned cs)
 {
 	return -1;
@@ -119,8 +105,8 @@ __weak int board_spi_cs_gpio(unsigned bus, unsigned cs)
 #define reg_read readl
 #define reg_write(a, v) writel(v, a)
 
-#if !defined(CONFIG_SYS_SPI_MXC_WAIT)
-#define CONFIG_SYS_SPI_MXC_WAIT		(CONFIG_SYS_HZ/100)	/* 10 ms */
+#if !defined(CFG_SYS_SPI_MXC_WAIT)
+#define CFG_SYS_SPI_MXC_WAIT		(CONFIG_SYS_HZ/100)	/* 10 ms */
 #endif
 
 #define MAX_CS_COUNT	4
@@ -131,6 +117,9 @@ struct mxc_spi_slave {
 	u32		ctrl_reg;
 #if defined(MXC_ECSPI)
 	u32		cfg_reg;
+#endif
+#if CONFIG_IS_ENABLED(CLK)
+	struct clk	clk;
 #endif
 	int		gpio;
 	int		ss_pol;
@@ -152,7 +141,7 @@ static void mxc_spi_cs_activate(struct mxc_spi_slave *mxcs)
 	struct udevice *dev = mxcs->dev;
 	struct dm_spi_slave_plat *slave_plat = dev_get_parent_plat(dev);
 
-	u32 cs = slave_plat->cs;
+	u32 cs = slave_plat->cs[0];
 
 	if (!dm_gpio_is_valid(&mxcs->cs_gpios[cs]))
 		return;
@@ -170,7 +159,7 @@ static void mxc_spi_cs_deactivate(struct mxc_spi_slave *mxcs)
 	struct udevice *dev = mxcs->dev;
 	struct dm_spi_slave_plat *slave_plat = dev_get_parent_plat(dev);
 
-	u32 cs = slave_plat->cs;
+	u32 cs = slave_plat->cs[0];
 
 	if (!dm_gpio_is_valid(&mxcs->cs_gpios[cs]))
 		return;
@@ -214,9 +203,6 @@ static s32 spi_cfg_mxc(struct mxc_spi_slave *mxcs, unsigned int cs)
 		MXC_CSPICTRL_BITCOUNT(MXC_CSPICTRL_MAXBITS) |
 		MXC_CSPICTRL_DATARATE(div) |
 		MXC_CSPICTRL_EN |
-#ifdef CONFIG_MX35
-		MXC_CSPICTRL_SSCTL |
-#endif
 		MXC_CSPICTRL_MODE;
 
 	if (mode & SPI_CPHA)
@@ -234,7 +220,11 @@ static s32 spi_cfg_mxc(struct mxc_spi_slave *mxcs, unsigned int cs)
 #ifdef MXC_ECSPI
 static s32 spi_cfg_mxc(struct mxc_spi_slave *mxcs, unsigned int cs)
 {
+#if CONFIG_IS_ENABLED(CLK)
+	u32 clk_src = clk_get_rate(&mxcs->clk);
+#else
 	u32 clk_src = mxc_get_clock(MXC_CSPI_CLK);
+#endif
 	s32 reg_ctrl, reg_config;
 	u32 ss_pol = 0, sclkpol = 0, sclkpha = 0, sclkctl = 0;
 	u32 pre_div = 0, post_div = 0;
@@ -392,7 +382,7 @@ int spi_xchg_single(struct mxc_spi_slave *mxcs, unsigned int bitlen,
 	status = reg_read(&regs->stat);
 	/* Wait until the TC (Transfer completed) bit is set */
 	while ((status & MXC_CSPICTRL_TC) == 0) {
-		if (get_timer(ts) > CONFIG_SYS_SPI_MXC_WAIT) {
+		if (get_timer(ts) > CFG_SYS_SPI_MXC_WAIT) {
 			printf("spi_xchg_single: Timeout!\n");
 			return -1;
 		}
@@ -403,8 +393,6 @@ int spi_xchg_single(struct mxc_spi_slave *mxcs, unsigned int bitlen,
 	reg_write(&regs->stat, MXC_CSPICTRL_TC | MXC_CSPICTRL_RXOVF);
 
 	nbytes = DIV_ROUND_UP(bitlen, 8);
-
-	cnt = nbytes % 32;
 
 	if (bitlen % 32) {
 		data = reg_read(&regs->rxdata);
@@ -601,8 +589,6 @@ void spi_release_bus(struct spi_slave *slave)
 static int mxc_spi_probe(struct udevice *bus)
 {
 	struct mxc_spi_slave *mxcs = dev_get_plat(bus);
-	int node = dev_of_offset(bus);
-	const void *blob = gd->fdt_blob;
 	int ret;
 	int i;
 
@@ -630,15 +616,16 @@ static int mxc_spi_probe(struct udevice *bus)
 		return -ENODEV;
 
 #if CONFIG_IS_ENABLED(CLK)
-	struct clk clk;
-	ret = clk_get_by_index(bus, 0, &clk);
+	ret = clk_get_by_index(bus, 0, &mxcs->clk);
 	if (ret)
 		return ret;
 
-	clk_enable(&clk);
+	clk_enable(&mxcs->clk);
 
-	mxcs->max_hz = clk_get_rate(&clk);
+	mxcs->max_hz = clk_get_rate(&mxcs->clk);
 #else
+	int node = dev_of_offset(bus);
+	const void *blob = gd->fdt_blob;
 	mxcs->max_hz = fdtdec_get_int(blob, node, "spi-max-frequency",
 				      20000000);
 #endif
@@ -651,7 +638,6 @@ static int mxc_spi_xfer(struct udevice *dev, unsigned int bitlen,
 {
 	struct mxc_spi_slave *mxcs = dev_get_plat(dev->parent);
 
-
 	return mxc_spi_xfer_internal(mxcs, bitlen, dout, din, flags);
 }
 
@@ -662,7 +648,7 @@ static int mxc_spi_claim_bus(struct udevice *dev)
 
 	mxcs->dev = dev;
 
-	return mxc_spi_claim_bus_internal(mxcs, slave_plat->cs);
+	return mxc_spi_claim_bus_internal(mxcs, slave_plat->cs[0]);
 }
 
 static int mxc_spi_release_bus(struct udevice *dev)
@@ -699,6 +685,7 @@ static const struct dm_spi_ops mxc_spi_ops = {
 
 static const struct udevice_id mxc_spi_ids[] = {
 	{ .compatible = "fsl,imx51-ecspi" },
+	{ .compatible = "fsl,imx6ul-ecspi" },
 	{ }
 };
 

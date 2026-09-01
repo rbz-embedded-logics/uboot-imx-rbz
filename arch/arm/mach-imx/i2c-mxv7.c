@@ -4,8 +4,8 @@
  * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
  * Copyright 2018 NXP
  */
-#include <common.h>
 #include <malloc.h>
+#include <time.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/imx-regs.h>
 #include <linux/delay.h>
@@ -71,7 +71,7 @@ int force_idle_bus(void *priv)
 		scl = gpio_get_value(p->scl.gp);
 		if ((sda & scl) == 1)
 			break;
-		WATCHDOG_RESET();
+		schedule();
 		elapsed = get_timer(start_time);
 		if (elapsed > (CONFIG_SYS_HZ / 5)) {	/* .2 seconds */
 			ret = -EBUSY;
@@ -94,6 +94,12 @@ static void * const i2c_bases[] = {
 #endif
 #ifdef I2C4_BASE_ADDR
 	(void *)I2C4_BASE_ADDR,
+#endif
+#ifdef I2C5_BASE_ADDR
+	(void *)I2C5_BASE_ADDR,
+#endif
+#ifdef I2C6_BASE_ADDR
+	(void *)I2C6_BASE_ADDR,
 #endif
 };
 

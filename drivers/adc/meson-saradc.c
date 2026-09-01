@@ -7,7 +7,6 @@
  * Amlogic Meson Successive Approximation Register (SAR) A/D Converter
  */
 
-#include <common.h>
 #include <adc.h>
 #include <clk.h>
 #include <dm.h>
@@ -18,6 +17,7 @@
 #include <linux/delay.h>
 #include <linux/math64.h>
 #include <linux/bitfield.h>
+#include <linux/printk.h>
 #include <power/regulator.h>
 
 #define MESON_SAR_ADC_REG0					0x00
@@ -205,9 +205,9 @@ static int meson_saradc_lock(struct meson_saradc_priv *priv)
 	do {
 		udelay(1);
 		regmap_read(priv->regmap, MESON_SAR_ADC_DELAY, &val);
-	} while (val & MESON_SAR_ADC_DELAY_BL30_BUSY && timeout--);
+	} while (val & MESON_SAR_ADC_DELAY_BL30_BUSY && --timeout);
 
-	if (timeout < 0) {
+	if (!timeout) {
 		printf("Timeout while waiting for BL30 unlock\n");
 		return -ETIMEDOUT;
 	}
@@ -256,9 +256,9 @@ static int meson_saradc_wait_busy_clear(struct meson_saradc_priv *priv)
 	do {
 		udelay(1);
 		regmap_read(priv->regmap, MESON_SAR_ADC_REG0, &regval);
-	} while (FIELD_GET(MESON_SAR_ADC_REG0_BUSY_MASK, regval) && timeout--);
+	} while (FIELD_GET(MESON_SAR_ADC_REG0_BUSY_MASK, regval) && --timeout);
 
-	if (timeout < 0)
+	if (!timeout)
 		return -ETIMEDOUT;
 
 	return 0;
@@ -736,6 +736,8 @@ static const struct udevice_id meson_saradc_ids[] = {
 	{ .compatible = "amlogic,meson-gxm-saradc",
 	  .data = (ulong)&gxl_saradc_data },
 	{ .compatible = "amlogic,meson-g12a-saradc",
+	  .data = (ulong)&gxl_saradc_data },
+	{ .compatible = "amlogic,meson-axg-saradc",
 	  .data = (ulong)&gxl_saradc_data },
 	{ }
 };

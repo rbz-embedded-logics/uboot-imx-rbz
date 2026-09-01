@@ -11,11 +11,9 @@
 #include <linux/bitops.h>
 
 /* Clock speed accessors */
-unsigned long cm_get_mpu_clk_hz(void);
 unsigned long cm_get_sdram_clk_hz(void);
 unsigned int cm_get_l4_sp_clk_hz(void);
 unsigned int cm_get_mmc_controller_clk_hz(void);
-unsigned int cm_get_qspi_controller_clk_hz(void);
 unsigned int cm_get_spi_controller_clk_hz(void);
 
 struct cm_config {
@@ -108,7 +106,6 @@ void cm_basic_init(const struct cm_config * const cfg);
 #define CLKMGR_INTER					CLKMGR_S10_INTER
 #define CLKMGR_PERPLL_EN				CLKMGR_S10_PERPLL_EN
 
-
 #define CLKMGR_CTRL_SAFEMODE				BIT(0)
 #define CLKMGR_BYPASS_MAINPLL_ALL			0x00000007
 #define CLKMGR_BYPASS_PERPLL_ALL			0x0000007f
@@ -123,12 +120,12 @@ void cm_basic_init(const struct cm_config * const cfg);
 
 #define CLKMGR_PLLGLOB_PD_MASK				0x00000001
 #define CLKMGR_PLLGLOB_RST_MASK				0x00000002
-#define CLKMGR_PLLGLOB_VCO_PSRC_MASK			0X3
+#define CLKMGR_PLLGLOB_VCO_PSRC_MASK			0x3
 #define CLKMGR_PLLGLOB_VCO_PSRC_OFFSET			16
 #define CLKMGR_VCO_PSRC_EOSC1				0
 #define CLKMGR_VCO_PSRC_INTOSC				1
 #define CLKMGR_VCO_PSRC_F2S				2
-#define CLKMGR_PLLGLOB_REFCLKDIV_MASK			0X3f
+#define CLKMGR_PLLGLOB_REFCLKDIV_MASK			0x3f
 #define CLKMGR_PLLGLOB_REFCLKDIV_OFFSET			8
 
 #define CLKMGR_CLKSRC_MASK				0x7
@@ -155,7 +152,7 @@ void cm_basic_init(const struct cm_config * const cfg);
 #define CLKMGR_NOCDIV_CSTRACECLK_OFFSET			26
 #define CLKMGR_NOCDIV_CSPDBGCLK_OFFSET			28
 
-#define CLKMGR_NOCDIV_L4SPCLK_MASK			0X3
+#define CLKMGR_NOCDIV_L4SPCLK_MASK			0x3
 #define CLKMGR_NOCDIV_DIV1				0
 #define CLKMGR_NOCDIV_DIV2				1
 #define CLKMGR_NOCDIV_DIV4				2

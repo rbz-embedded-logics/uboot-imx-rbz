@@ -9,6 +9,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -272,7 +273,7 @@ int main(int argc, char *argv[])
 
 	if (ehdr_field(e_type) != ET_EXEC) {
 		fprintf(stderr, "Input ELF is not an executable\n");
-		printf("type 0x%lx\n", ehdr_field(e_type));
+		printf("type 0x%" PRIx64 "\n", ehdr_field(e_type));
 		err = -EINVAL;
 		goto out_free_relocs;
 	}
@@ -312,7 +313,7 @@ int main(int argc, char *argv[])
 		goto out_free_relocs;
 	}
 
-	rel_pfx = is_64 ? ".rela." : ".rel.";
+	rel_pfx = is_64 ? ".rela" : ".rel";
 
 	for (i = 0; i < ehdr_field(e_shnum); i++) {
 		sh_type = shdr_field(i, sh_type);
@@ -321,10 +322,11 @@ int main(int argc, char *argv[])
 
 		sh_name = shstr(shdr_field(i, sh_name));
 		if (strncmp(sh_name, rel_pfx, strlen(rel_pfx))) {
-			if (strcmp(sh_name, ".rel") && strcmp(sh_name, ".rel.dyn"))
-				fprintf(stderr, "WARNING: Unexpected reloc section name '%s'\n", sh_name);
+			fprintf(stderr, "WARNING: Unexpected reloc section name '%s'\n", sh_name);
 			continue;
 		}
+		if (!strcmp(sh_name, ".rel") || !strcmp(sh_name, ".rel.dyn"))
+			continue;
 
 		/*
 		 * Skip reloc sections which either don't correspond to another
@@ -334,7 +336,7 @@ int main(int argc, char *argv[])
 		 */
 		skip = true;
 		for (j = 0; j < ehdr_field(e_shnum); j++) {
-			if (strcmp(&sh_name[strlen(rel_pfx) - 1], shstr(shdr_field(j, sh_name))))
+			if (strcmp(&sh_name[strlen(rel_pfx)], shstr(shdr_field(j, sh_name))))
 				continue;
 
 			skip = !(shdr_field(j, sh_flags) & SHF_ALLOC);
@@ -393,9 +395,9 @@ int main(int argc, char *argv[])
 	rel_size = shdr_field(i_rel_shdr, sh_size);
 	rel_actual_size = buf - buf_start;
 	if (rel_actual_size > rel_size) {
-		fprintf(stderr, "Relocations overflow available space of 0x%lx (required 0x%lx)!\n",
+		fprintf(stderr, "Relocations overflow available space of 0x%zx (required 0x%zx)!\n",
 			rel_size, rel_actual_size);
-		fprintf(stderr, "Please adjust CONFIG_MIPS_RELOCATION_TABLE_SIZE to at least 0x%lx\n",
+		fprintf(stderr, "Please adjust CONFIG_MIPS_RELOCATION_TABLE_SIZE to at least 0x%zx\n",
 			(rel_actual_size + 0x100) & ~0xFF);
 		err = -ENOMEM;
 		goto out_free_relocs;

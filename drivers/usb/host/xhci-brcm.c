@@ -3,11 +3,11 @@
  * Copyright (C) 2019 Broadcom.
  */
 
-#include <common.h>
 #include <dm.h>
 #include <fdtdec.h>
 #include <usb.h>
 #include <asm/io.h>
+#include <dm/device_compat.h>
 #include <usb/xhci.h>
 
 #define DRD2U3H_XHC_REGS_AXIWRA	0xC08
@@ -85,7 +85,7 @@ static const struct udevice_id xhci_brcm_ids[] = {
 	{ }
 };
 
-U_BOOT_DRIVER(usb_xhci) = {
+U_BOOT_DRIVER(xhci_brcm) = {
 	.name				= "xhci_brcm",
 	.id				= UCLASS_USB,
 	.probe				= xhci_brcm_probe,

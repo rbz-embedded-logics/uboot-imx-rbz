@@ -7,7 +7,6 @@
 #include <fb_fsl.h>
 #include <linux/stat.h>
 #include <linux/types.h>
-#include <common.h>
 #include <g_dnl.h>
 #include <mmc.h>
 #include "bcb.h"
@@ -148,10 +147,10 @@ int bcb_rw_block(bool bread, char **ppblock,
 			return -1;
 		}
 		sprintf(addr_str, "0x%x", (unsigned int)(uintptr_t)p_block);
-		ret = do_raw_read(NULL, 0, 6, argv);
+		ret = do_rw(NULL, 0, 6, argv);
 		if (ret) {
 			free(p_block);
-			printf("do_raw_read failed, ret %d\n", ret);
+			printf("do_rw read failed, ret %d\n", ret);
 			return -1;
 		}
 

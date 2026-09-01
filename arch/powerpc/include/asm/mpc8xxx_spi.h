@@ -11,9 +11,8 @@
 #include <asm/types.h>
 
 #if defined(CONFIG_ARCH_MPC8308) || \
-	defined(CONFIG_ARCH_MPC8309) || \
 	defined(CONFIG_ARCH_MPC8313) || \
-	defined(CONFIG_ARCH_MPC8315) || \
+	defined(CONFIG_ARCH_MPC832X) || \
 	defined(CONFIG_ARCH_MPC834X) || \
 	defined(CONFIG_ARCH_MPC837X)
 
@@ -27,6 +26,7 @@ typedef struct spi8xxx {
 	u32 rx;		/* receive register */
 	u8 res1[0xFC8];	/* fill up to 0x1000 */
 } spi8xxx_t;
+static_assert(sizeof(spi8xxx_t) == 0x1000);
 
 #endif
 

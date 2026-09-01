@@ -7,7 +7,6 @@
  * Tom Rini <trini@ti.com>
  */
 
-#include <common.h>
 #include <config.h>
 #include <init.h>
 #include <log.h>
@@ -17,6 +16,9 @@
 #include <asm/global_data.h>
 #include <linux/compiler.h>
 #include <asm/mach-types.h>
+#if defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
+#include <asm/armv7.h>
+#endif
 
 #ifndef CONFIG_SPL_DM
 /* Pointer to as well as the global data structure for SPL */
@@ -26,7 +28,7 @@ DECLARE_GLOBAL_DATA_PTR;
  * WARNING: This is going away very soon. Don't use it and don't submit
  * pafches that rely on it. The global_data area is set up in crt0.S.
  */
-gd_t gdata __attribute__ ((section(".data")));
+gd_t gdata __section(".data");
 #endif
 
 /*
@@ -47,10 +49,9 @@ void __weak board_init_f(ulong dummy)
 }
 
 /*
- * This function jumps to an image with argument. Normally an FDT or ATAGS
- * image.
+ * This function jumps to an image with argument, usually an FDT.
  */
-#ifdef CONFIG_SPL_OS_BOOT
+#if CONFIG_IS_ENABLED(OS_BOOT)
 #ifdef CONFIG_ARM64
 void __noreturn jump_to_image_linux(struct spl_image_info *spl_image)
 {
@@ -73,7 +74,25 @@ void __noreturn jump_to_image_linux(struct spl_image_info *spl_image)
 	image_entry_arg_t image_entry =
 		(image_entry_arg_t)(uintptr_t) spl_image->entry_point;
 	cleanup_before_linux();
+#if defined(CONFIG_BOOTM_OPTEE) && defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
+	if (spl_image->optee_addr)
+		boot_jump_linux_via_optee((void *)(spl_image->entry_point),
+					  machid,
+					  (u32)(spl_image->arg),
+					  spl_image->optee_addr);
+#endif
 	image_entry(0, machid, spl_image->arg);
 }
 #endif	/* CONFIG_ARM64 */
+#endif
+
+#if CONFIG_IS_ENABLED(OPTEE_IMAGE)
+void __noreturn jump_to_image_optee(struct spl_image_info *spl_image)
+{
+	/* flush and turn off caches before jumping to OPTEE */
+	cleanup_before_linux();
+
+	spl_optee_entry(NULL, NULL, spl_image->fdt_addr,
+			(void *)spl_image->entry_point);
+}
 #endif

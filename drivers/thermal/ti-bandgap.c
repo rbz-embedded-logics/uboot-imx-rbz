@@ -1,7 +1,7 @@
 /*
  * TI Bandgap temperature sensor driver
  *
- * Copyright (C) 2017 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2017 Texas Instruments Incorporated - https://www.ti.com/
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -163,7 +163,7 @@ static int ti_bandgap_get_temp(struct udevice *dev,  int *temp)
 	struct ti_bandgap *bgp = dev_get_priv(dev);
 
 	bgp->adc_val = 0x3ff & readl(bgp->base + CTRL_CORE_TEMP_SENSOR_MPU);
-	*temp = dra752_adc_to_temp[bgp->adc_val - DRA752_ADC_START_VALUE];
+	*temp = dra752_adc_to_temp[bgp->adc_val - DRA752_ADC_START_VALUE] * 1000;
 
 	return 0;
 }

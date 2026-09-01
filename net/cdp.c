@@ -1,19 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *	Copied from Linux Monitor (LiMon) - Networking.
  *
  *	Copyright 1994 - 2000 Neil Russell.
- *	(See License)
  *	Copyright 2000 Roland Borde
  *	Copyright 2000 Paolo Scaffardi
  *	Copyright 2000-2002 Wolfgang Denk, wd@denx.de
  */
 
-#include <common.h>
 #include <net.h>
-#if defined(CONFIG_CDP_VERSION)
-#include <timestamp.h>
-#endif
 
 #include "cdp.h"
 

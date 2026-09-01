@@ -1,34 +1,22 @@
 // SPDX-License-Identifier: GPL 2.0+ OR BSD-3-Clause
 /*
  * Copyright 2015 Google Inc.
+ * Copyright 2025 NXP
  */
 
-#include <common.h>
 #include <compiler.h>
 #include <image.h>
-#include <lz4.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <asm/unaligned.h>
-
-static u16 LZ4_readLE16(const void *src) { return le16_to_cpu(*(u16 *)src); }
-static void LZ4_copy4(void *dst, const void *src) { *(u32 *)dst = *(u32 *)src; }
-static void LZ4_copy8(void *dst, const void *src) { *(u64 *)dst = *(u64 *)src; }
-
-typedef  uint8_t BYTE;
-typedef uint16_t U16;
-typedef uint32_t U32;
-typedef  int32_t S32;
-typedef uint64_t U64;
-
-#define FORCE_INLINE static inline __attribute__((always_inline))
+#include <u-boot/lz4.h>
 
 /* lz4.c is unaltered (except removing unrelated code) from github.com/Cyan4973/lz4. */
 #include "lz4.c"	/* #include for inlining, do not link! */
 
 #define LZ4F_BLOCKUNCOMPRESSED_FLAG 0x80000000U
 
-int ulz4fn(const void *src, size_t srcn, void *dst, size_t *dstn)
+__rcode int ulz4fn(const void *src, size_t srcn, void *dst, size_t *dstn)
 {
 	const void *end = dst + *dstn;
 	const void *in = src;
@@ -92,7 +80,7 @@ int ulz4fn(const void *src, size_t srcn, void *dst, size_t *dstn)
 		}
 
 		if (block_header & LZ4F_BLOCKUNCOMPRESSED_FLAG) {
-			size_t size = min((ptrdiff_t)block_size, end - out);
+			size_t size = min((ptrdiff_t)block_size, (ptrdiff_t)(end - out));
 			memcpy(out, in, size);
 			out += size;
 			if (size < block_size) {
@@ -103,7 +91,7 @@ int ulz4fn(const void *src, size_t srcn, void *dst, size_t *dstn)
 			/* constant folding essential, do not touch params! */
 			ret = LZ4_decompress_generic(in, out, block_size,
 					end - out, endOnInputSize,
-					full, 0, noDict, out, NULL, 0);
+					decode_full_block, noDict, out, NULL, 0);
 			if (ret < 0) {
 				ret = -EPROTO;	/* decompression error */
 				break;
@@ -118,4 +106,76 @@ int ulz4fn(const void *src, size_t srcn, void *dst, size_t *dstn)
 
 	*dstn = out - dst;
 	return ret;
+}
+
+__rcode int ulz4fn_legacy(const void *src, size_t srcn, void *dst, size_t *dstn)
+{
+	const void *end = dst + *dstn;
+	const void *in = src;
+	void *out = dst;
+	int ret = 0;
+	*dstn = 0;
+	u32 block_size;
+	u32 magic;
+
+	if (srcn < sizeof(u32) * 2) {
+		printf("lz4: wrong input image size!\n");
+		return -EINVAL;
+	}
+
+	magic = get_unaligned_le32(in);
+	if (magic != LZ4L_MAGIC) {
+		printf("lz4: expect legacy lz4 magic (0x%x), but get 0x%x\n", LZ4L_MAGIC, magic);
+		return -EPROTONOSUPPORT;
+	}
+	in += sizeof(u32);
+
+	while (1) {
+		if (in >= src + srcn) {
+			// success
+			ret = 0;
+			break;
+		}
+
+		block_size = get_unaligned_le32(in);
+		in += sizeof(u32);
+		if (block_size == 0) {
+			continue;
+		}
+
+		if (in - src + block_size > srcn) {
+			printf("lz4: input overrun\n");
+			ret = -EINVAL;
+			break;
+		}
+
+		ret = LZ4_decompress_safe(in, out, block_size, end - out);
+		if (ret < 0) {
+			ret = -EPROTO;
+			printf("lz4: decompression error!");
+			break;
+		}
+
+		out += ret;
+		in += block_size;
+	}
+
+	*dstn = out - dst;
+	return ret;
+}
+
+__rcode int ulz4fn_auto(const void *src, size_t srcn, void *dst, size_t *dstn)
+{
+	u32 magic;
+
+	magic = get_unaligned_le32(src);
+	if (magic == LZ4L_MAGIC) {
+		// lz4 legacy format
+		return ulz4fn_legacy(src, srcn, dst, dstn);
+	} else if (magic == LZ4F_MAGIC) {
+		// standard lz4 format
+		return ulz4fn(src, srcn, dst, dstn);
+	} else {
+		return -EPROTONOSUPPORT;
+	}
 }

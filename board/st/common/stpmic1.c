@@ -5,7 +5,6 @@
 
 #define LOG_CATEGORY LOGC_BOARD
 
-#include <common.h>
 #include <dm.h>
 #include <log.h>
 #include <asm/io.h>
@@ -15,8 +14,19 @@
 #include <power/pmic.h>
 #include <power/stpmic1.h>
 
+static bool is_stm32mp13xx(void)
+{
+	if (!IS_ENABLED(CONFIG_STM32MP13X))
+		return false;
+
+	return of_machine_is_compatible("st,stm32mp131") ||
+	       of_machine_is_compatible("st,stm32mp133") ||
+	       of_machine_is_compatible("st,stm32mp135");
+}
+
 int board_ddr_power_init(enum ddr_type ddr_type)
 {
+	bool is_mp13 = is_stm32mp13xx();
 	struct udevice *dev;
 	bool buck3_at_1800000v = false;
 	int ret;
@@ -31,18 +41,21 @@ int board_ddr_power_init(enum ddr_type ddr_type)
 	switch (ddr_type) {
 	case STM32MP_DDR3:
 		/* VTT = Set LDO3 to sync mode */
-		ret = pmic_reg_read(dev, STPMIC1_LDOX_MAIN_CR(STPMIC1_LDO3));
-		if (ret < 0)
-			return ret;
+		if (!is_mp13) {
+			/* Enable VTT only on STM32MP15xx */
+			ret = pmic_reg_read(dev, STPMIC1_LDOX_MAIN_CR(STPMIC1_LDO3));
+			if (ret < 0)
+				return ret;
 
-		ret &= ~STPMIC1_LDO3_MODE;
-		ret &= ~STPMIC1_LDO12356_VOUT_MASK;
-		ret |= STPMIC1_LDO_VOUT(STPMIC1_LDO3_DDR_SEL);
+			ret &= ~STPMIC1_LDO3_MODE;
+			ret &= ~STPMIC1_LDO12356_VOUT_MASK;
+			ret |= STPMIC1_LDO_VOUT(STPMIC1_LDO3_DDR_SEL);
 
-		ret = pmic_reg_write(dev, STPMIC1_LDOX_MAIN_CR(STPMIC1_LDO3),
-				     ret);
-		if (ret < 0)
-			return ret;
+			ret = pmic_reg_write(dev, STPMIC1_LDOX_MAIN_CR(STPMIC1_LDO3),
+					     ret);
+			if (ret < 0)
+				return ret;
+		}
 
 		/* VDD_DDR = Set BUCK2 to 1.35V */
 		ret = pmic_clrsetbits(dev,
@@ -70,11 +83,14 @@ int board_ddr_power_init(enum ddr_type ddr_type)
 		mdelay(STPMIC1_DEFAULT_START_UP_DELAY_MS);
 
 		/* Enable VTT = LDO3 */
-		ret = pmic_clrsetbits(dev,
-				      STPMIC1_LDOX_MAIN_CR(STPMIC1_LDO3),
-				      STPMIC1_LDO_ENA, STPMIC1_LDO_ENA);
-		if (ret < 0)
-			return ret;
+		if (!is_mp13) {
+			/* Enable VTT only on STM32MP15xx */
+			ret = pmic_clrsetbits(dev,
+					      STPMIC1_LDOX_MAIN_CR(STPMIC1_LDO3),
+					      STPMIC1_LDO_ENA, STPMIC1_LDO_ENA);
+			if (ret < 0)
+				return ret;
+		}
 
 		mdelay(STPMIC1_DEFAULT_START_UP_DELAY_MS);
 
@@ -185,35 +201,17 @@ static int stmpic_buck1_set(struct udevice *dev, u32 voltage_mv)
 }
 
 /* early init of PMIC */
-void stpmic1_init(u32 voltage_mv)
+struct udevice *stpmic1_init(u32 voltage_mv)
 {
 	struct udevice *dev;
 
 	if (uclass_get_device_by_driver(UCLASS_PMIC,
 					DM_DRIVER_GET(pmic_stpmic1), &dev))
-		return;
+		return NULL;
 
 	/* update VDDCORE = BUCK1 */
 	if (voltage_mv)
 		stmpic_buck1_set(dev, voltage_mv);
 
-	/* Keep vdd on during the reset cycle */
-	pmic_clrsetbits(dev,
-			STPMIC1_BUCKS_MRST_CR,
-			STPMIC1_MRST_BUCK(STPMIC1_BUCK3),
-			STPMIC1_MRST_BUCK(STPMIC1_BUCK3));
-
-	/* Check if debug is enabled to program PMIC according to the bit */
-	if (readl(TAMP_BOOT_CONTEXT) & TAMP_BOOT_DEBUG_ON) {
-		log_info("Keep debug unit ON\n");
-
-		pmic_clrsetbits(dev, STPMIC1_BUCKS_MRST_CR,
-				STPMIC1_MRST_BUCK_DEBUG,
-				STPMIC1_MRST_BUCK_DEBUG);
-
-		if (STPMIC1_MRST_LDO_DEBUG)
-			pmic_clrsetbits(dev, STPMIC1_LDOS_MRST_CR,
-					STPMIC1_MRST_LDO_DEBUG,
-					STPMIC1_MRST_LDO_DEBUG);
-	}
+	return dev;
 }

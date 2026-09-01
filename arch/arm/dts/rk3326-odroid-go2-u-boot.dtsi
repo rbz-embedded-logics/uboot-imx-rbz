@@ -3,70 +3,69 @@
  * Copyright (c) 2020 Theobroma Systems Design und Consulting GmbH
  */
 
-/ {
-	chosen {
-		u-boot,spl-boot-order = &sdmmc;
+#include "rk3326-u-boot.dtsi"
+
+&blue_led {
+	default-state = "on";
+	u-boot,default-brightness = <127>;
+};
+
+&i2c0_xfer {
+	bootph-pre-ram;
+};
+
+&i2s1_2ch_mclk {
+	bootph-pre-ram;
+};
+
+&pcfg_pull_none_smt {
+	bootph-pre-ram;
+};
+
+&pmic_int {
+	bootph-pre-ram;
+};
+
+&rk817 {
+	regulators {
+		bootph-pre-ram;
+
+		vcc_cam: LDO_REG9 {
+			regulator-name = "vcc_cam";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+
+			regulator-state-mem {
+				regulator-off-in-suspend;
+				regulator-suspend-microvolt = <3000000>;
+			};
+		};
 	};
 };
 
-&cru {
-	u-boot,dm-pre-reloc;
-};
-
-&dmc {
-	u-boot,dm-pre-reloc;
-};
-
-&gpio0 {
-	u-boot,dm-pre-reloc;
-};
-
-&gpio1 {
-	u-boot,dm-pre-reloc;
-};
-
-&gpio2 {
-	u-boot,dm-pre-reloc;
-};
-
-&gpio3 {
-	u-boot,dm-pre-reloc;
-};
-
-&grf {
-	u-boot,dm-pre-reloc;
-};
-
-&pmucru {
-	u-boot,dm-pre-reloc;
-};
-
-&pmugrf {
-	u-boot,dm-pre-reloc;
-};
-
 &saradc {
-	u-boot,dm-pre-reloc;
-	status = "okay";
+	bootph-pre-ram;
+	vdd-microvolts = <1800000>;
 };
 
-&sdmmc {
-	u-boot,dm-pre-reloc;
-
-	/* mmc to sram can't do dma, prevent aborts transferring TF-A parts */
-	u-boot,spl-fifo-mode;
+&sfc {
+	flash@0 {
+		bootph-pre-ram;
+		bootph-some-ram;
+	};
 };
 
 &uart1 {
+	bootph-all;
 	clock-frequency = <24000000>;
-	u-boot,dm-pre-reloc;
 };
 
-&uart2 {
-	clock-frequency = <24000000>;
-	u-boot,dm-pre-reloc;
+&uart1_cts {
+	bootph-pre-sram;
+	bootph-pre-ram;
 };
 
-&xin24m {
-	u-boot,dm-pre-reloc;
+&uart1_xfer {
+	bootph-pre-sram;
+	bootph-pre-ram;
 };

@@ -9,7 +9,6 @@
 
 #define pr_fmt(fmt)	"nand: " fmt
 
-#include <common.h>
 #include <watchdog.h>
 #ifndef __UBOOT__
 #include <linux/compat.h>
@@ -17,6 +16,7 @@
 #endif
 #include <linux/bitops.h>
 #include <linux/mtd/nand.h>
+#include <linux/printk.h>
 
 /**
  * nanddev_isbad() - Check if a block is bad
@@ -129,7 +129,7 @@ EXPORT_SYMBOL_GPL(nanddev_isreserved);
  *
  * Return: 0 in case of success, a negative error code otherwise.
  */
-int nanddev_erase(struct nand_device *nand, const struct nand_pos *pos)
+static int nanddev_erase(struct nand_device *nand, const struct nand_pos *pos)
 {
 	unsigned int entry;
 
@@ -147,7 +147,6 @@ int nanddev_erase(struct nand_device *nand, const struct nand_pos *pos)
 
 	return nand->ops->erase(nand, pos);
 }
-EXPORT_SYMBOL_GPL(nanddev_erase);
 
 /**
  * nanddev_mtd_erase() - Generic mtd->_erase() implementation for NAND devices
@@ -173,7 +172,7 @@ int nanddev_mtd_erase(struct mtd_info *mtd, struct erase_info *einfo)
 	nanddev_offs_to_pos(nand, einfo->addr, &pos);
 	nanddev_offs_to_pos(nand, einfo->addr + einfo->len - 1, &last);
 	while (nanddev_pos_cmp(&pos, &last) <= 0) {
-		WATCHDOG_RESET();
+		schedule();
 		ret = nanddev_erase(nand, &pos);
 		if (ret) {
 			einfo->fail_addr = nanddev_pos_to_offs(nand, &pos);
@@ -202,14 +201,17 @@ EXPORT_SYMBOL_GPL(nanddev_mtd_erase);
 int nanddev_init(struct nand_device *nand, const struct nand_ops *ops,
 		 struct module *owner)
 {
-	struct mtd_info *mtd = nanddev_to_mtd(nand);
-	struct nand_memory_organization *memorg = nanddev_get_memorg(nand);
+	struct mtd_info *mtd;
+	struct nand_memory_organization *memorg;
 
 	if (!nand || !ops)
 		return -EINVAL;
 
 	if (!ops->erase || !ops->markbad || !ops->isbad)
 		return -EINVAL;
+
+	mtd = nanddev_to_mtd(nand);
+	memorg = nanddev_get_memorg(nand);
 
 	if (!memorg->bits_per_cell || !memorg->pagesize ||
 	    !memorg->pages_per_eraseblock || !memorg->eraseblocks_per_lun ||

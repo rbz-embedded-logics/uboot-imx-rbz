@@ -178,7 +178,7 @@ static const struct mtk_pin_field_calc mt8512_pin_drv_range[] = {
 	PIN_FIELDS(112, 115, 0x760, 0x10, 16, 4),
 };
 
-static const struct mtk_pin_reg_calc mt8512_reg_cals[] = {
+static const struct mtk_pin_reg_calc mt8512_reg_cals[PINCTRL_PIN_REG_MAX] = {
 	[PINCTRL_PIN_REG_MODE] = MTK_RANGE(mt8512_pin_mode_range),
 	[PINCTRL_PIN_REG_DIR] = MTK_RANGE(mt8512_pin_dir_range),
 	[PINCTRL_PIN_REG_DI] = MTK_RANGE(mt8512_pin_di_range),
@@ -315,12 +315,12 @@ static const struct mtk_pin_desc mt8512_pins[] = {
  */
 
 /* UART */
-static int mt8512_uart0_0_rxd_txd_pins[]		= { 52, 53, };
-static int mt8512_uart0_0_rxd_txd_funcs[]		= {  1,  1, };
-static int mt8512_uart1_0_rxd_txd_pins[]		= { 54, 55, };
-static int mt8512_uart1_0_rxd_txd_funcs[]		= {  1,  1, };
-static int mt8512_uart2_0_rxd_txd_pins[]		= { 28, 29, };
-static int mt8512_uart2_0_rxd_txd_funcs[]		= {  1,  1, };
+static const int mt8512_uart0_0_rxd_txd_pins[]		= { 52, 53, };
+static const int mt8512_uart0_0_rxd_txd_funcs[]		= {  1,  1, };
+static const int mt8512_uart1_0_rxd_txd_pins[]		= { 54, 55, };
+static const int mt8512_uart1_0_rxd_txd_funcs[]		= {  1,  1, };
+static const int mt8512_uart2_0_rxd_txd_pins[]		= { 28, 29, };
+static const int mt8512_uart2_0_rxd_txd_funcs[]		= {  1,  1, };
 
 /* Joint those groups owning the same capability in user point of view which
  * allows that people tend to use through the device tree.
@@ -330,13 +330,13 @@ static const char *const mt8512_uart_groups[] = { "uart0_0_rxd_txd",
 						"uart2_0_rxd_txd", };
 
 /* SNAND */
-static int mt8512_snfi_pins[] = { 71, 76, 77, 78, 79, 80, };
-static int mt8512_snfi_funcs[] = { 3, 3, 3, 3, 3, 3, };
+static const int mt8512_snfi_pins[] = { 71, 76, 77, 78, 79, 80, };
+static const int mt8512_snfi_funcs[] = { 3, 3, 3, 3, 3, 3, };
 
 /* MMC0 */
-static int mt8512_msdc0_pins[] = { 76, 77, 78, 79, 80, 81, 82, 83, 84,
-				   85, 86, };
-static int mt8512_msdc0_funcs[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, };
+static const int mt8512_msdc0_pins[] = { 76, 77, 78, 79, 80, 81, 82, 83, 84,
+					 85, 86, };
+static const int mt8512_msdc0_funcs[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, };
 
 static const struct mtk_group_desc mt8512_groups[] = {
 	PINCTRL_PIN_GROUP("uart0_0_rxd_txd", mt8512_uart0_0_rxd_txd),
@@ -356,7 +356,7 @@ static const struct mtk_function_desc mt8512_functions[] = {
 	{"snand", mt8512_msdc_groups, ARRAY_SIZE(mt8512_msdc_groups)},
 };
 
-static struct mtk_pinctrl_soc mt8512_data = {
+static const struct mtk_pinctrl_soc mt8512_data = {
 	.name = "mt8512_pinctrl",
 	.reg_cal = mt8512_reg_cals,
 	.pins = mt8512_pins,
@@ -382,6 +382,7 @@ U_BOOT_DRIVER(mt8512_pinctrl) = {
 	.id = UCLASS_PINCTRL,
 	.of_match = mt8512_pctrl_match,
 	.ops = &mtk_pinctrl_ops,
+	.bind = mtk_pinctrl_common_bind,
 	.probe = mtk_pinctrl_mt8512_probe,
 	.priv_auto	= sizeof(struct mtk_pinctrl_priv),
 };

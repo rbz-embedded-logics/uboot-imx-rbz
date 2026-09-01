@@ -45,6 +45,17 @@ struct video_bridge_ops {
 	int (*check_attached)(struct udevice *dev);
 
 	/**
+	 * check_timing() - check if the timing need update after the bridge device attached
+	 *
+	 * This method is optional - if not provided then return 0
+	 *
+	 * @dev:	Device to check
+	 * @active:	The timing to be checked and updated
+	 * Return: 0 if OK, -ve on error
+	 */
+	int (*check_timing)(struct udevice *dev, struct display_timing *timing);
+
+	/**
 	 * set_backlight() - Set the backlight brightness
 	 *
 	 * @dev:	device to adjust
@@ -52,6 +63,19 @@ struct video_bridge_ops {
 	 * @return 0 if OK, -ve on error
 	 */
 	int (*set_backlight)(struct udevice *dev, int percent);
+
+	/**
+	 * get_display_timing() - Get display timings from bridge.
+	 *
+	 * @dev:	Bridge device containing the linked display timings
+	 * @tim:	Place to put timings
+	 * @return 0 if OK, -ve on error
+	 *
+	 * This call it totally optional and useful mainly for integrated
+	 * bridges with fixed output device.
+	 */
+	int (*get_display_timing)(struct udevice *dev,
+				  struct display_timing *timing);
 
 	/**
 	 * read_edid() - Read information from EDID
@@ -67,10 +91,11 @@ struct video_bridge_ops {
 #define video_bridge_get_ops(dev) \
 		((struct video_bridge_ops *)(dev)->driver->ops)
 
+#if CONFIG_IS_ENABLED(VIDEO_BRIDGE)
 /**
  * video_bridge_attach() - attach a video bridge
  *
- * @return 0 if OK, -ve on error
+ * Return: 0 if OK, -ve on error
  */
 int video_bridge_attach(struct udevice *dev);
 
@@ -78,7 +103,7 @@ int video_bridge_attach(struct udevice *dev);
  * video_bridge_set_backlight() - Set the backlight brightness
  *
  * @percent:	brightness percentage (0=off, 100=full brightness)
- * @return 0 if OK, -ve on error
+ * Return: 0 if OK, -ve on error
  */
 int video_bridge_set_backlight(struct udevice *dev, int percent);
 
@@ -94,9 +119,26 @@ int video_bridge_set_active(struct udevice *dev, bool active);
  * check_attached() - check if a bridge is correctly attached
  *
  * @dev:	Device to check
- * @return 0 if attached, -EENOTCONN if not, or other -ve error
+ * Return: 0 if attached, -EENOTCONN if not, or other -ve error
  */
 int video_bridge_check_attached(struct udevice *dev);
+
+/**
+ * video_bridge_get_display_timing() - Get display timings from bridge.
+ *
+ * @dev:	Bridge device containing the linked display timings
+ * Return: 0 if OK, -ve on error
+ */
+int video_bridge_get_display_timing(struct udevice *dev,
+				    struct display_timing *timing);
+/**
+ * check_timing() - check if the timing need update after the bridge device attached
+ *
+ * @dev:	Device to check
+ * @active:	The timing to be checked and updated
+ * Return: 0 if OK, -ve on error
+ */
+int video_bridge_check_timing(struct udevice *dev, struct display_timing *timing);
 
 /**
  * video_bridge_read_edid() - Read information from EDID
@@ -104,8 +146,40 @@ int video_bridge_check_attached(struct udevice *dev);
  * @dev:	Device to read from
  * @buf:	Buffer to read into
  * @buf_size:	Buffer size
- * @return number of bytes read, <=0 for error
+ * Return: number of bytes read, <=0 for error
  */
 int video_bridge_read_edid(struct udevice *dev, u8 *buf, int buf_size);
+#else
+static inline int video_bridge_attach(struct udevice *dev)
+{
+	return -ENOSYS;
+}
+
+static inline int video_bridge_set_backlight(struct udevice *dev, int percent)
+{
+	return -ENOSYS;
+}
+
+static inline int video_bridge_set_active(struct udevice *dev, bool active)
+{
+	return -ENOSYS;
+}
+
+static inline int video_bridge_check_attached(struct udevice *dev)
+{
+	return -ENOSYS;
+}
+
+static inline int video_bridge_get_display_timing(struct udevice *dev,
+						  struct display_timing *timing)
+{
+	return -ENOSYS;
+}
+
+static inline int video_bridge_read_edid(struct udevice *dev, u8 *buf, int buf_size)
+{
+	return -ENOSYS;
+}
+#endif /* CONFIG_VIDEO_BRIDGE */
 
 #endif

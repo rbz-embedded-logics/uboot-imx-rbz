@@ -11,10 +11,6 @@ ENTRY(_start)
 
 SECTIONS
 {
-#ifndef CONFIG_CMDLINE
-	/DISCARD/ : { *(.u_boot_list_2_cmd_*) }
-#endif
-
 	. = IMAGE_TEXT_BASE;	/* Location of bootcode in flash */
 	__text_start = .;
 	.text  : {
@@ -25,12 +21,20 @@ SECTIONS
 	. = ALIGN(4);
 
 	. = ALIGN(4);
-	.u_boot_list : {
-		KEEP(*(SORT(.u_boot_list*)));
+	__u_boot_list : {
+		KEEP(*(SORT(__u_boot_list*)));
 	}
 
 	. = ALIGN(4);
 	.rodata : { *(SORT_BY_ALIGNMENT(SORT_BY_NAME(.rodata*))) }
+
+	. = ALIGN(4);
+
+	.priv_data : {
+		__priv_data_start = .;
+		*(SORT_BY_ALIGNMENT(SORT_BY_NAME(.priv_data*)))
+		__priv_data_end = .;
+	}
 
 	. = ALIGN(4);
 	.data : { *(.data*) }
@@ -64,7 +68,7 @@ SECTIONS
 		__bss_start = .;
 		*(.bss*)
 		*(COM*)
-		. = ALIGN(4);
+		. = ALIGN(8);
 		__bss_end = .;
 	}
 	__bss_size = __bss_end - __bss_start;
@@ -74,6 +78,7 @@ SECTIONS
 	/DISCARD/ : { *(.plt*) }
 	/DISCARD/ : { *(.interp*) }
 	/DISCARD/ : { *(.gnu*) }
+	/DISCARD/ : { *(.note.gnu.property) }
 
 #if defined(CONFIG_SPL_X86_16BIT_INIT) || defined(CONFIG_TPL_X86_16BIT_INIT)
 	/*
@@ -92,3 +97,11 @@ SECTIONS
 #endif
 
 }
+
+ASSERT(_image_binary_end % 8 == 0, \
+       "_image_binary_end must be 8-byte aligned for device tree");
+
+#if !CONFIG_IS_ENABLED(SEPARATE_BSS)
+ASSERT(__bss_end % 8 == 0, \
+       "__bss_end must be 8-byte aligned for device tree");
+#endif

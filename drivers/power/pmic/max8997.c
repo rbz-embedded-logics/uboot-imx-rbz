@@ -4,9 +4,9 @@
  *  Jaehoon Chung <jh80.chung@samsung.com>
  */
 
-#include <common.h>
 #include <dm.h>
 #include <i2c.h>
+#include <linux/printk.h>
 #include <power/pmic.h>
 #include <power/max8997_pmic.h>
 #include <errno.h>
@@ -46,7 +46,7 @@ static struct dm_pmic_ops max8997_ops = {
 };
 
 static const struct udevice_id max8997_ids[] = {
-	{ .compatible = "maxim,max8997" },
+	{ .compatible = "maxim,max8997-pmic" },
 	{ },
 };
 

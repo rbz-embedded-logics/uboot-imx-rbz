@@ -5,13 +5,12 @@
  */
 
 #include <config.h>
-#include <common.h>
 #include <blk.h>
-#include <flash.h>
 
 #include <fastboot.h>
 #include <image-sparse.h>
 
+#include <linux/printk.h>
 #include <linux/mtd/mtd.h>
 #include <jffs2/jffs2.h>
 #include <nand.h>
@@ -158,8 +157,13 @@ int fastboot_nand_get_part_info(const char *part_name,
 				struct part_info **part_info, char *response)
 {
 	struct mtd_info *mtd = NULL;
+	int ret;
 
-	return fb_nand_lookup(part_name, &mtd, part_info, response);
+	ret = fb_nand_lookup(part_name, &mtd, part_info, response);
+	if (ret)
+		return -ENOENT;
+
+	return ret;
 }
 
 /**

@@ -18,9 +18,9 @@
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #else
-#include <common.h>
 #include <dm.h>
 #include <dm/device_compat.h>
+#include <linux/printk.h>
 #include <asm/processor.h>
 #include "linux-compat.h"
 #endif
@@ -96,6 +96,9 @@ static int service_tx_status_request(
 		if (!epnum) {
 			result[0] = 0;
 			break;
+		} else if (epnum >= MUSB_C_NUM_EPS) {
+			handled = -EINVAL;
+			break;
 		}
 
 		is_in = epnum & USB_DIR_IN;
@@ -107,7 +110,7 @@ static int service_tx_status_request(
 		}
 		regs = musb->endpoints[epnum].regs;
 
-		if (epnum >= MUSB_C_NUM_EPS || !ep->desc) {
+		if (!ep->desc) {
 			handled = -EINVAL;
 			break;
 		}
@@ -147,7 +150,7 @@ static int service_tx_status_request(
  * that is supposed to be a standard control request. Assumes the fifo to
  * be at least 2 bytes long.
  *
- * @return 0 if the request was NOT HANDLED,
+ * Return: 0 if the request was NOT HANDLED,
  * < 0 when error
  * > 0 when the request is processed
  *
@@ -500,7 +503,6 @@ static void ep0_rxstate(struct musb *musb)
 			req = NULL;
 	} else
 		csr = MUSB_CSR0_P_SVDRXPKTRDY | MUSB_CSR0_P_SENDSTALL;
-
 
 	/* Completion handler may choose to stall, e.g. because the
 	 * message just received holds invalid data.
@@ -894,7 +896,6 @@ finish:
 
 	return retval;
 }
-
 
 static int
 musb_g_ep0_enable(struct usb_ep *ep, const struct usb_endpoint_descriptor *desc)

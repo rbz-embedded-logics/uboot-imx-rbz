@@ -4,7 +4,6 @@
  */
 
 #include <config.h>
-#include <common.h>
 #include <dm.h>
 #include <errno.h>
 #include <log.h>
@@ -12,7 +11,7 @@
 #include <asm/global_data.h>
 #include <dm/device-internal.h>
 #include <dm/device.h>
-#include <asm/arch/sci/sci.h>
+#include <firmware/imx/sci/sci.h>
 #include <linux/delay.h>
 #include <linux/libfdt.h>
 
@@ -73,7 +72,7 @@ int imx_sc_thermal_get_temp(struct udevice *dev, int *temp)
 			break;
 	}
 
-	*temp = cpu_temp / 1000;
+	*temp = cpu_temp;
 
 	return 0;
 }

@@ -10,6 +10,8 @@ source "drivers/ata/Kconfig"
 
 source "drivers/axi/Kconfig"
 
+source "drivers/bios_emulator/Kconfig"
+
 source "drivers/bus/Kconfig"
 
 source "drivers/block/Kconfig"
@@ -36,11 +38,17 @@ source "drivers/dfu/Kconfig"
 
 source "drivers/dma/Kconfig"
 
+source "drivers/extcon/Kconfig"
+
 source "drivers/fastboot/Kconfig"
 
 source "drivers/firmware/Kconfig"
 
+source "drivers/fuzz/Kconfig"
+
 source "drivers/fpga/Kconfig"
+
+source "drivers/fwu-mdata/Kconfig"
 
 source "drivers/gpio/Kconfig"
 
@@ -48,13 +56,21 @@ source "drivers/hwspinlock/Kconfig"
 
 source "drivers/i2c/Kconfig"
 
+source "drivers/i3c/Kconfig"
+
 source "drivers/input/Kconfig"
+
+source "drivers/interconnect/Kconfig"
+
+source "drivers/iommu/Kconfig"
 
 source "drivers/led/Kconfig"
 
 source "drivers/mailbox/Kconfig"
 
 source "drivers/memory/Kconfig"
+
+source "drivers/mfd/Kconfig"
 
 source "drivers/misc/Kconfig"
 
@@ -80,6 +96,8 @@ source "drivers/phy/allwinner/Kconfig"
 
 source "drivers/phy/marvell/Kconfig"
 
+source "drivers/phy/socionext/Kconfig"
+
 source "drivers/pinctrl/Kconfig"
 
 source "drivers/power/Kconfig"
@@ -89,6 +107,8 @@ source "drivers/pwm/Kconfig"
 source "drivers/qe/Kconfig"
 
 source "drivers/ram/Kconfig"
+
+source "drivers/reboot-mode/Kconfig"
 
 source "drivers/remoteproc/Kconfig"
 
@@ -101,6 +121,8 @@ source "drivers/rtc/Kconfig"
 source "drivers/scsi/Kconfig"
 
 source "drivers/serial/Kconfig"
+
+source "drivers/sm/Kconfig"
 
 source "drivers/smem/Kconfig"
 
@@ -142,6 +164,7 @@ source "drivers/xen/Kconfig"
 
 config PHYS_TO_BUS
 	bool "Custom physical to bus address mapping"
+	depends on !COMPILE_TEST
 	help
 	  Some SoCs use a different address map for CPU physical addresses and
 	  peripheral DMA master accesses. If yours does, select this option in

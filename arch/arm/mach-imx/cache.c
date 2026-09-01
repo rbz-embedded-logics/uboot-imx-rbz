@@ -3,18 +3,15 @@
  * Copyright 2015 Freescale Semiconductor, Inc.
  */
 
-#include <common.h>
+#include <config.h>
 #include <cpu_func.h>
 #include <asm/armv7.h>
 #include <asm/cache.h>
 #include <asm/pl310.h>
 #include <asm/io.h>
 #include <asm/mach-imx/sys_proto.h>
-#include <asm/global_data.h>
 
-DECLARE_GLOBAL_DATA_PTR;
-
-static void enable_ca7_smp(void)
+void enable_ca7_smp(void)
 {
 	u32 val;
 
@@ -43,16 +40,12 @@ static void enable_ca7_smp(void)
 }
 
 #if !CONFIG_IS_ENABLED(SYS_DCACHE_OFF)
-
-#define ARMV7_DOMAIN_CLIENT	1
-#define ARMV7_DOMAIN_MASK	(0x3 << 0)
-
 void enable_caches(void)
 {
 #if defined(CONFIG_SYS_ARM_CACHE_WRITETHROUGH)
-	enum dcache_option option = DCACHE_WRITETHROUGH & ~TTB_SECT_XN_MASK;
+	enum dcache_option option = DCACHE_WRITETHROUGH;
 #else
-	enum dcache_option option = DCACHE_WRITEBACK & ~TTB_SECT_XN_MASK;
+	enum dcache_option option = DCACHE_WRITEBACK;
 #endif
 	/* Avoid random hang when download by usb */
 	invalidate_dcache_all();
@@ -71,33 +64,6 @@ void enable_caches(void)
 					IRAM_SIZE,
 					option);
 }
-
-void dram_bank_mmu_setup(int bank)
-{
-	struct bd_info *bd = gd->bd;
-	int	i;
-
-	debug("%s: bank: %d\n", __func__, bank);
-	for (i = bd->bi_dram[bank].start >> MMU_SECTION_SHIFT;
-	     i < (bd->bi_dram[bank].start >> MMU_SECTION_SHIFT) +
-		 (bd->bi_dram[bank].size >> MMU_SECTION_SHIFT);
-	     i++)
-		set_section_dcache(i, DCACHE_DEFAULT_OPTION & ~TTB_SECT_XN_MASK);
-}
-
-void arm_init_domains(void)
-{
-	u32 reg;
-
-	reg = get_dacr();
-	/*
-	* Set domain to client to do access and XN check
-	*/
-	reg &= ~ARMV7_DOMAIN_MASK;
-	reg |= ARMV7_DOMAIN_CLIENT;
-	set_dacr(reg);
-}
-
 #else
 void enable_caches(void)
 {
@@ -119,7 +85,6 @@ void v7_outer_cache_enable(void)
 	struct pl310_regs *const pl310 = (struct pl310_regs *)L2_PL310_BASE;
 	struct iomuxc *iomux = (struct iomuxc *)IOMUXC_BASE_ADDR;
 	unsigned int val, cache_id;
-
 
 	/*
 	 * Must disable the L2 before changing the latency parameters

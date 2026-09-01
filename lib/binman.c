@@ -6,7 +6,6 @@
  * Written by Simon Glass <sjg@chromium.org>
  */
 
-#include <common.h>
 #include <binman.h>
 #include <dm.h>
 #include <log.h>
@@ -17,12 +16,15 @@
  * struct binman_info - Information needed by the binman library
  *
  * @image: Node describing the image we are running from
+ * @skip_at_start: Number of bytes skipped at the start of the image. This is
+ *	the value of the skip-at-start property for the image
  * @rom_offset: Offset from an image_pos to the memory-mapped address, or
  *	ROM_OFFSET_NONE if the ROM is not memory-mapped. Can be positive or
  *	negative
  */
 struct binman_info {
 	ofnode image;
+	uint skip_at_start;
 	int rom_offset;
 };
 
@@ -37,7 +39,7 @@ static struct binman_info *binman;
  * depends on whether multiple-images is in use.
  *
  * @nodep: Returns the node found, on success
- * @return 0 if OK, , -EINVAL if there is no /binman node, -ECHILD if multiple
+ * Return: 0 if OK, , -EINVAL if there is no /binman node, -ECHILD if multiple
  * images are being used but the first image is not available
  */
 static int find_image_node(ofnode *nodep)
@@ -81,7 +83,14 @@ static int binman_entry_find_internal(ofnode node, const char *name,
 
 int binman_entry_find(const char *name, struct binman_entry *entry)
 {
-	return binman_entry_find_internal(binman->image, name, entry);
+	int ret;
+
+	ret = binman_entry_find_internal(binman->image, name, entry);
+	if (ret)
+		return log_msg_ret("bef", ret);
+	entry->image_pos -= binman->skip_at_start;
+
+	return 0;
 }
 
 int binman_entry_map(ofnode parent, const char *name, void **bufp, int *sizep)
@@ -108,7 +117,7 @@ ofnode binman_section_find_node(const char *name)
 
 void binman_set_rom_offset(int rom_offset)
 {
-	binman->rom_offset = rom_offset;
+	binman->rom_offset = rom_offset - binman->skip_at_start;
 }
 
 int binman_get_rom_offset(void)
@@ -128,8 +137,8 @@ int binman_select_subnode(const char *name)
 	if (!ofnode_valid(node))
 		return log_msg_ret("node", -ENOENT);
 	binman->image = node;
-	log_debug("binman: Selected image subnode '%s'\n",
-		  ofnode_get_name(binman->image));
+	log_info("binman: Selected image subnode '%s'\n",
+		 ofnode_get_name(binman->image));
 
 	return 0;
 }
@@ -141,10 +150,12 @@ int binman_init(void)
 	binman = malloc(sizeof(struct binman_info));
 	if (!binman)
 		return log_msg_ret("space for binman", -ENOMEM);
+	memset(binman, '\0', sizeof(struct binman_info));
 	ret = find_image_node(&binman->image);
 	if (ret)
 		return log_msg_ret("node", -ENOENT);
 	binman_set_rom_offset(ROM_OFFSET_NONE);
+	ofnode_read_u32(binman->image, "skip-at-start", &binman->skip_at_start);
 	log_debug("binman: Selected image node '%s'\n",
 		  ofnode_get_name(binman->image));
 

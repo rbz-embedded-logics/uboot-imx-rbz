@@ -43,7 +43,7 @@
 		/* 4GB */
 		reg = <0 0x00000000 0 0x80000000>,
 		      <1 0x80000000 0 0x80000000>;
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 
@@ -92,7 +92,7 @@
 	broken-cd;
 	bus-width = <4>;
 	drvsel = <3>;
-	smplsel = <0>;
+	smplsel = <2>;
 };
 
 &qspi {
@@ -135,5 +135,9 @@
 };
 
 &usb0 {
+	status = "okay";
+};
+
+&watchdog0 {
 	status = "okay";
 };

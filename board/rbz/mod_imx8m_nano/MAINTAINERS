@@ -1,8 +1,0 @@
-RBZ MOD_IMX8M_NANO BOARD
-M:	Carlos Amor <camor@rbz.es>
-S:	Maintained
-F:  arch/arm/dts/mod-imx8m-nano.dts
-F:  arch/arm/dts/mod-imx8m-nano-u-boot.dtsi
-F:	board/rbz/mod_imx8m_nano/
-F:	include/configs/mod_imx8m_nano.h
-F:	configs/mod_imx8m_nano_defconfig

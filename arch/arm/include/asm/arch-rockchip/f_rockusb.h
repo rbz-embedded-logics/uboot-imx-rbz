@@ -65,7 +65,7 @@ K_FW_SPI_READ_10 = 0x21,
 K_FW_SPI_WRITE_10 = 0x22,
 K_FW_LBA_ERASE_10 = 0x25,
 
-K_FW_SESSION = 0X30,
+K_FW_SESSION = 0x30,
 K_FW_RESET = 0xff,
 };
 
@@ -133,4 +133,3 @@ struct f_rockusb {
 /* init rockusb device, tell rockusb which device you want to read/write*/
 void rockusb_dev_init(char *dev_type, int dev_index);
 #endif /* _F_ROCKUSB_H_ */
-

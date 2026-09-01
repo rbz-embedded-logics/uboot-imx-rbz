@@ -3,13 +3,16 @@
  * Texas Instruments System Control Interface Protocol
  * Based on include/linux/soc/ti/ti_sci_protocol.h from Linux.
  *
- * Copyright (C) 2018 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2018 Texas Instruments Incorporated - https://www.ti.com/
  *	Nishanth Menon
  *	Lokesh Vutla <lokeshvutla@ti.com>
  */
 
 #ifndef __TISCI_PROTOCOL_H
 #define __TISCI_PROTOCOL_H
+
+#include <linux/bitops.h>
+#include <linux/err.h>
 
 /**
  * struct ti_sci_version_info - version information structure
@@ -20,12 +23,33 @@
  * @firmware_revision:	Firmware revision (not usually used).
  * @firmware_description: Firmware description (not usually used).
  */
-#include <linux/bitops.h>
 struct ti_sci_version_info {
 	u8 abi_major;
 	u8 abi_minor;
 	u16 firmware_revision;
 	char firmware_description[32];
+};
+
+/**
+ * struct ti_sci_dm_version_info - version information structure
+ * @abi_major:		Major ABI version. Change here implies risk of backward
+ *			compatibility break.
+ * @abi_minor:		Minor ABI version. Change here implies new feature addition,
+ *			or compatible change in ABI.
+ * @patch_ver:		Patch version of the firmware.
+ * @sub_ver:		Sub-version of the firmware.
+ * @dm_ver:		DM version.
+ * @sci_server_version: Version string of the SCI server.
+ * @rm_pm_hal_version:  Version string of the RM PM HAL.
+ */
+struct ti_sci_dm_version_info {
+	u8 abi_major;
+	u8 abi_minor;
+	u8 patch_ver;
+	u8 sub_ver;
+	u16 dm_ver;
+	char rm_pm_hal_version[12];
+	char sci_server_version[26];
 };
 
 struct ti_sci_handle;
@@ -141,7 +165,7 @@ struct ti_sci_dev_ops {
 				 u32 reset_state);
 	int (*get_device_resets)(const struct ti_sci_handle *handle, u32 id,
 				 u32 *reset_state);
-	int (*release_exclusive_devices)(const struct ti_sci_handle *handle);
+	int (*release_exclusive_devices)(void);
 };
 
 /**
@@ -258,6 +282,22 @@ struct ti_sci_core_ops {
 	int (*query_msmc)(const struct ti_sci_handle *handle,
 			  u64 *msmc_start, u64 *msmc_end);
 };
+
+/**
+ * struct ti_sci_firmware_ops - DM firmware operations
+ * @query_dm_cap: Query the DM capabilities
+ *                Return 0 for successful query else appropriate error value.
+ * @get_dm_version: Get the DM version.
+ *                  Return 0 for successful request else appropriate error value.
+ */
+struct ti_sci_firmware_ops {
+	int (*query_dm_cap)(struct ti_sci_handle *handle,
+			    u64 *dm_cap);
+	int (*get_dm_version)(struct ti_sci_handle *handle,
+			      struct ti_sci_dm_version_info *get_dm_version);
+};
+
+#define TI_SCI_MSG_FLAG_FW_CAP_DM	0x100
 
 /**
  * struct ti_sci_proc_ops - Processor specific operations.
@@ -379,6 +419,13 @@ struct ti_sci_rm_psil_ops {
 #define TI_SCI_RM_UDMAP_RX_FLOW_DESC_HOST		0
 #define TI_SCI_RM_UDMAP_RX_FLOW_DESC_MONO		2
 
+#define TI_SCI_RM_UDMAP_CHAN_BURST_SIZE_64_BYTES	1
+#define TI_SCI_RM_UDMAP_CHAN_BURST_SIZE_128_BYTES	2
+#define TI_SCI_RM_UDMAP_CHAN_BURST_SIZE_256_BYTES	3
+
+#define TI_SCI_RM_BCDMA_EXTENDED_CH_TYPE_TCHAN		0
+#define TI_SCI_RM_BCDMA_EXTENDED_CH_TYPE_BCHAN		1
+
 /* UDMAP TX/RX channel valid_params common declarations */
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_PAUSE_ON_ERR_VALID		BIT(0)
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_ATYPE_VALID                BIT(1)
@@ -389,6 +436,7 @@ struct ti_sci_rm_psil_ops {
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_QOS_VALID                  BIT(6)
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_ORDER_ID_VALID             BIT(7)
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_SCHED_PRIORITY_VALID       BIT(8)
+#define TI_SCI_MSG_VALUE_RM_UDMAP_CH_BURST_SIZE_VALID		BIT(14)
 
 /**
  * Configures a Navigator Subsystem UDMAP transmit channel
@@ -403,6 +451,8 @@ struct ti_sci_msg_rm_udmap_tx_ch_cfg {
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_SUPR_TDPKT_VALID        BIT(11)
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_CREDIT_COUNT_VALID      BIT(12)
 #define TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_FDEPTH_VALID            BIT(13)
+#define TI_SCI_MSG_VALUE_RM_UDMAP_CH_TX_TDTYPE_VALID            BIT(15)
+#define TI_SCI_MSG_VALUE_RM_UDMAP_CH_EXTENDED_CH_TYPE_VALID	BIT(16)
 	u16 nav_id;
 	u16 index;
 	u8 tx_pause_on_err;
@@ -419,6 +469,9 @@ struct ti_sci_msg_rm_udmap_tx_ch_cfg {
 	u8 tx_orderid;
 	u16 fdepth;
 	u8 tx_sched_priority;
+	u8 tx_burst_size;
+	u8 tx_tdtype;
+	u8 extended_ch_type;
 };
 
 /**
@@ -448,6 +501,7 @@ struct ti_sci_msg_rm_udmap_rx_ch_cfg {
 	u8 rx_chan_type;
 	u8 rx_ignore_short;
 	u8 rx_ignore_long;
+	u8 rx_burst_size;
 };
 
 /**
@@ -593,6 +647,7 @@ struct ti_sci_ops {
 	struct ti_sci_dev_ops dev_ops;
 	struct ti_sci_clk_ops clk_ops;
 	struct ti_sci_core_ops core_ops;
+	struct ti_sci_firmware_ops fw_ops;
 	struct ti_sci_proc_ops proc_ops;
 	struct ti_sci_rm_core_ops rm_core_ops;
 	struct ti_sci_rm_ringacc_ops rm_ring_ops;

@@ -5,23 +5,31 @@
  * Copyright (c) 2019 Simon Goldschmidt
  */
 /{
+	memory {
+		bootph-all;
+	};
+
 	soc {
-		u-boot,dm-pre-reloc;
+		bootph-all;
 	};
 };
 
 &clkmgr {
-	u-boot,dm-pre-reloc;
+	bootph-all;
+};
+
+&L2 {
+	bootph-all;
 };
 
 &rst {
-	u-boot,dm-pre-reloc;
+	bootph-all;
 };
 
 &sdr {
-	u-boot,dm-pre-reloc;
+	bootph-all;
 };
 
 &sysmgr {
-	u-boot,dm-pre-reloc;
+	bootph-all;
 };

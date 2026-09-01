@@ -5,7 +5,6 @@
  * Author:  Weijie Gao <weijie.gao@mediatek.com>
  */
 
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <asm/global_data.h>
@@ -68,6 +67,9 @@ int print_cpuinfo(void)
 	val = readl(sysc + SYSCTL_EFUSE_CFG_REG);
 	ee = val & EFUSE_MT7688;
 
+	if (pkg == PKG_ID_KN)
+		ddr = DRAM_DDR1;
+
 	printf("CPU:   MediaTek MT%u%c ver:%u eco:%u\n",
 	       ee ? 7688 : 7628, pkg ? 'A' : 'K', ver, eco);
 
@@ -107,4 +109,12 @@ int print_cpuinfo(void)
 ulong notrace get_tbclk(void)
 {
 	return gd->arch.timer_freq;
+}
+
+void _machine_restart(void)
+{
+	void __iomem *sysc = ioremap_nocache(SYSCTL_BASE, SYSCTL_SIZE);
+
+	while (1)
+		writel(SYS_RST, sysc + SYSCTL_RSTCTL_REG);
 }

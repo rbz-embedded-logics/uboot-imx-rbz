@@ -10,13 +10,13 @@
  */
 
 #include <asm/processor.h>
-#include <common.h>
 #include <clk-uclass.h>
 #include <dm.h>
 #include <linux/clk-provider.h>
 #include <linux/clk/at91_pmc.h>
 #include <linux/delay.h>
 #include <linux/io.h>
+#include <linux/time.h>
 #include "pmc.h"
 
 #define UBOOT_DM_CLK_AT91_MAIN_RC		"at91-main-rc-clk"
@@ -25,7 +25,6 @@
 #define UBOOT_DM_CLK_AT91_SAM9X5_MAIN		"at91-sam9x5-main-clk"
 
 #define MOR_KEY_MASK		GENMASK(23, 16)
-#define USEC_PER_SEC		1000000UL
 #define SLOW_CLOCK_FREQ		32768
 
 #define clk_main_parent_select(s)	(((s) & \
@@ -111,7 +110,7 @@ struct clk *at91_clk_main_rc(void __iomem *reg, const char *name,
 	struct clk *clk;
 	int ret;
 
-	if (!reg || !name || !parent_name)
+	if (!reg || !name)
 		return ERR_PTR(-EINVAL);
 
 	main_rc = kzalloc(sizeof(*main_rc), GFP_KERNEL);
@@ -316,7 +315,8 @@ static int clk_sam9x5_main_set_parent(struct clk *clk, struct clk *parent)
 {
 	struct clk_main *main = to_clk_main(clk);
 	void __iomem *reg = main->reg;
-	unsigned int tmp, index;
+	unsigned int tmp;
+	int index;
 
 	index = at91_clk_mux_val_to_index(main->clk_mux_table,
 			main->num_parents, AT91_CLK_ID_TO_DID(parent->id));

@@ -4,13 +4,15 @@
  * Copyright 2020-2021 NXP
  */
 
-#include <common.h>
+#include <config.h>
 #include <clock_legacy.h>
 #include <efi_loader.h>
+#include <env.h>
 #include <log.h>
 #include <asm/cache.h>
 #include <linux/libfdt.h>
 #include <fdt_support.h>
+#include <malloc.h>
 #include <phy.h>
 #ifdef CONFIG_FSL_LSCH3
 #include <asm/arch/fdt.h>
@@ -31,6 +33,7 @@
 #endif
 #include <asm/arch/speed.h>
 #include <fsl_qbman.h>
+#include "dt_optee.h"
 
 int fdt_fixup_phy_connection(void *blob, int offset, phy_interface_t phyc)
 {
@@ -47,6 +50,61 @@ int fdt_fixup_phy_connection(void *blob, int offset, phy_interface_t phyc)
 }
 
 #ifdef CONFIG_MP
+static void fdt_fixup_thermal_cooling_device(void *blob, int cpu_off)
+{
+	int cnt, idx, len;
+	int map, maps;
+	int offline, phandle;
+	int ret;
+	int zone, zones;
+	u32 *tbl;
+	struct fdtdec_phandle_args dev;
+
+	zones = fdt_subnode_offset(blob, 0, "thermal-zones");
+	if (zones < 0)
+		return;
+
+	offline = fdt_get_phandle(blob, cpu_off);
+	fdt_for_each_subnode(zone, blob, zones) {
+		maps = fdt_subnode_offset(blob, zone, "cooling-maps");
+		if (maps < 0)
+			continue;
+		fdt_for_each_subnode(map, blob, maps) {
+			if (!fdt_getprop(blob, map, "cooling-device", &len))
+				continue;
+			cnt = fdtdec_parse_phandle_with_args(blob, map,
+							     "cooling-device",
+							     "#cooling-cells",
+							     0, -1, NULL);
+			if (cnt <= 0)
+				continue;
+			tbl = (u32 *)malloc(len);
+			if (!tbl)
+				return;
+			idx = 0;
+			for (int i = 0; i < cnt; i++) {
+				ret = fdtdec_parse_phandle_with_args(blob, map,
+								     "cooling-device",
+								     "#cooling-cells",
+								     0, i,
+								     &dev);
+				if (ret < 0)
+					goto skip_update;
+				phandle = fdt_get_phandle(blob, dev.node);
+				if (phandle == offline)
+					continue;
+				tbl[idx++] = cpu_to_fdt32(phandle);
+				for (int j = 0; j < dev.args_count; j++)
+					tbl[idx++] = cpu_to_fdt32(dev.args[j]);
+			}
+			fdt_setprop(blob, map, "cooling-device", tbl,
+				    (idx*sizeof(*tbl)));
+skip_update:
+			free(tbl);
+		}
+	}
+}
+
 void ft_fixup_cpu(void *blob)
 {
 	int off;
@@ -72,6 +130,7 @@ void ft_fixup_cpu(void *blob)
 		if (reg) {
 			core_id = fdt_read_number(reg, addr_cells);
 			if (!test_bit(id_to_core(core_id), &mask)) {
+				fdt_fixup_thermal_cooling_device(blob, off);
 				fdt_del_node(blob, off);
 				off = off_prev;
 			}
@@ -161,14 +220,9 @@ void fsl_fdt_disable_usb(void *blob)
 	 * controller is used, SYSCLK must meet the additional requirement
 	 * of 100 MHz.
 	 */
-	if (CONFIG_SYS_CLK_FREQ != 100000000) {
-		off = fdt_node_offset_by_compatible(blob, -1, "snps,dwc3");
-		while (off != -FDT_ERR_NOTFOUND) {
+	if (get_board_sys_clk() != 100000000)
+		fdt_for_each_node_by_compatible(off, blob, -1, "snps,dwc3")
 			fdt_status_disabled(blob, off);
-			off = fdt_node_offset_by_compatible(blob, off,
-							    "snps,dwc3");
-		}
-	}
 }
 
 #ifdef CONFIG_HAS_FEATURE_GIC64K_ALIGN
@@ -176,9 +230,9 @@ static void fdt_fixup_gic(void *blob)
 {
 	int offset, err;
 	u64 reg[8];
-	struct ccsr_gur __iomem *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	struct ccsr_gur __iomem *gur = (void *)(CFG_SYS_FSL_GUTS_ADDR);
 	unsigned int val;
-	struct ccsr_scfg __iomem *scfg = (void *)CONFIG_SYS_FSL_SCFG_ADDR;
+	struct ccsr_scfg __iomem *scfg = (void *)CFG_SYS_FSL_SCFG_ADDR;
 	int align_64k = 0;
 
 	val = gur_in32(&gur->svr);
@@ -360,7 +414,7 @@ static int _fdt_fixup_pci_msi(void *blob, const char *name, int rev)
 
 static void fdt_fixup_msi(void *blob)
 {
-	struct ccsr_gur __iomem *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	struct ccsr_gur __iomem *gur = (void *)(CFG_SYS_FSL_GUTS_ADDR);
 	unsigned int rev;
 
 	rev = gur_in32(&gur->svr);
@@ -391,6 +445,10 @@ void fdt_fixup_remove_jr(void *blob)
 	int crypto_node = fdt_path_offset(blob, "crypto");
 	u64 jr_offset, used_jr;
 	fdt32_t *reg;
+
+	/* Return if crypto node not found */
+	if (crypto_node < 0)
+		return;
 
 	used_jr = sec_firmware_used_jobring_offset();
 	fdt_support_default_count_cells(blob, crypto_node, &addr_cells, NULL);
@@ -427,7 +485,7 @@ static void fdt_disable_multimedia(void *blob, unsigned int svr)
 		fdt_status_disabled(blob, off);
 
 	/* Disable GPU node */
-	off = fdt_node_offset_by_compatible(blob, -1, "fsl,ls1028a-gpu");
+	off = fdt_node_offset_by_compatible(blob, -1, "vivante,gc");
 	if (off != -FDT_ERR_NOTFOUND)
 		fdt_status_disabled(blob, off);
 }
@@ -565,28 +623,28 @@ void fdt_fixup_pfe_firmware(void *blob)
 	if (!p)
 		return;
 
-	pclassfw = (void *)simple_strtoul(p, NULL, 16);
+	pclassfw = (void *)hextoul(p, NULL);
 	if (!pclassfw)
 		return;
 
 	p = env_get("class_elf_size");
 	if (!p)
 		return;
-	len_class = simple_strtoul(p, NULL, 16);
+	len_class = hextoul(p, NULL);
 
 	/* If the environment variable is not set, then exit silently */
 	p = env_get("tmu_elf_firmware");
 	if (!p)
 		return;
 
-	ptmufw = (void *)simple_strtoul(p, NULL, 16);
+	ptmufw = (void *)hextoul(p, NULL);
 	if (!ptmufw)
 		return;
 
 	p = env_get("tmu_elf_size");
 	if (!p)
 		return;
-	len_tmu = simple_strtoul(p, NULL, 16);
+	len_tmu = hextoul(p, NULL);
 
 	if (len_class == 0 || len_tmu == 0) {
 		printf("PFE FW corrupted. CLASS FW size %d, TMU FW size %d\n",
@@ -605,14 +663,14 @@ void fdt_fixup_pfe_firmware(void *blob)
 	if (!p)
 		return;
 
-	putilfw = (void *)simple_strtoul(p, NULL, 16);
+	putilfw = (void *)hextoul(p, NULL);
 	if (!putilfw)
 		return;
 
 	p = env_get("util_elf_size");
 	if (!p)
 		return;
-	len_util = simple_strtoul(p, NULL, 16);
+	len_util = hextoul(p, NULL);
 
 	if (len_util) {
 		printf("PFE Util PE firmware is not added to FDT.\n");
@@ -625,7 +683,7 @@ void fdt_fixup_pfe_firmware(void *blob)
 
 void ft_cpu_setup(void *blob, struct bd_info *bd)
 {
-	struct ccsr_gur __iomem *gur = (void *)(CONFIG_SYS_FSL_GUTS_ADDR);
+	struct ccsr_gur __iomem *gur = (void *)(CFG_SYS_FSL_GUTS_ADDR);
 	unsigned int svr = gur_in32(&gur->svr);
 
 	/* delete crypto node if not on an E-processor */
@@ -640,7 +698,7 @@ void ft_cpu_setup(void *blob, struct bd_info *bd)
 		fdt_fixup_kaslr(blob);
 #endif
 
-		sec = (void __iomem *)CONFIG_SYS_FSL_SEC_ADDR;
+		sec = (void __iomem *)CFG_SYS_FSL_SEC_ADDR;
 		fdt_fixup_crypto_node(blob, sec_in32(&sec->secvid_ms));
 	}
 #endif
@@ -651,11 +709,11 @@ void ft_cpu_setup(void *blob, struct bd_info *bd)
 
 #ifdef CONFIG_SYS_NS16550
 	do_fixup_by_compat_u32(blob, "fsl,ns16550",
-			       "clock-frequency", CONFIG_SYS_NS16550_CLK, 1);
+			       "clock-frequency", CFG_SYS_NS16550_CLK, 1);
 #endif
 
 	do_fixup_by_path_u32(blob, "/sysclk", "clock-frequency",
-			     CONFIG_SYS_CLK_FREQ, 1);
+			     get_board_sys_clk(), 1);
 
 #ifdef CONFIG_GIC_V3_ITS
 	ls_gic_rd_tables_init(blob);
@@ -672,11 +730,14 @@ void ft_cpu_setup(void *blob, struct bd_info *bd)
 #ifdef CONFIG_SYS_DPAA_QBMAN
 	fdt_fixup_bportals(blob);
 	fdt_fixup_qportals(blob);
+
+	fdt_fixup_qbman_reserved_mem(blob);
+
 	do_fixup_by_compat_u32(blob, "fsl,qman",
 			       "clock-frequency", get_qman_freq(), 1);
 #endif
 
-#ifdef CONFIG_SYS_DPAA_FMAN
+#ifdef CONFIG_FMAN_ENET
 	fdt_fixup_fman_firmware(blob);
 #endif
 #ifdef CONFIG_FSL_PFE
@@ -698,3 +759,14 @@ void ft_cpu_setup(void *blob, struct bd_info *bd)
 	fdt_fixup_ecam(blob);
 #endif
 }
+
+#ifdef CONFIG_OF_SYSTEM_SETUP
+int ft_system_setup(void *blob, struct bd_info *bd)
+{
+#ifdef CONFIG_OF_LIBFDT_OVERLAY
+	return ft_add_optee_overlay(blob, bd);
+#else
+	return 0;
+#endif
+}
+#endif

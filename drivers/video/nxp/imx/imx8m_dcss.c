@@ -3,7 +3,6 @@
  * Copyright 2019 NXP
  *
  */
-#include <common.h>
 #include <dm.h>
 #include <dm/device-internal.h>
 #include <dm/device_compat.h>
@@ -11,7 +10,6 @@
 #include <linux/errno.h>
 #include <malloc.h>
 #include <video.h>
-#include <video_fb.h>
 #include <display.h>
 
 #include <asm/cache.h>

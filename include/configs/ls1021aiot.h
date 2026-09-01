@@ -7,20 +7,8 @@
 #ifndef __CONFIG_H
 #define __CONFIG_H
 
-#define CONFIG_ARMV7_SECURE_BASE OCRAM_BASE_S_ADDR
-
-#define CONFIG_SYS_FSL_CLK
-
-/*
- * Size of malloc() pool
- */
-#define CONFIG_SYS_MALLOC_LEN	(CONFIG_ENV_SIZE + 16 * 1024 * 1024)
-
-#define CONFIG_SYS_INIT_RAM_ADDR	OCRAM_BASE_ADDR
-#define CONFIG_SYS_INIT_RAM_SIZE	OCRAM_SIZE
-
-#define CONFIG_SYS_CLK_FREQ		100000000
-#define CONFIG_DDR_CLK_FREQ		100000000
+#define CFG_SYS_INIT_RAM_ADDR	OCRAM_BASE_ADDR
+#define CFG_SYS_INIT_RAM_SIZE	OCRAM_SIZE
 
 /*
  * DDR: 800 MHz ( 1600 MT/s data rate )
@@ -53,169 +41,72 @@
 #define SDRAM_CFG2_FRC_SR		0x80000000
 #define SDRAM_CFG_BI			0x00000001
 
-#ifdef CONFIG_RAMBOOT_PBL
-#define CONFIG_SYS_FSL_PBL_PBI	\
-	board/freescale/ls1021aiot/ls102xa_pbi.cfg
-#endif
+#define CFG_SYS_DDR_SDRAM_BASE	0x80000000UL
+#define CFG_SYS_SDRAM_BASE		CFG_SYS_DDR_SDRAM_BASE
 
-#ifdef CONFIG_SD_BOOT
-#define CONFIG_SYS_FSL_PBL_RCW	\
-	board/freescale/ls1021aiot/ls102xa_rcw_sd.cfg
-#define CONFIG_SPL_LIBCOMMON_SUPPORT
-#define CONFIG_SPL_LIBGENERIC_SUPPORT
-#define CONFIG_SPL_ENV_SUPPORT
-#define CONFIG_SPL_MPC8XXX_INIT_DDR_SUPPORT
-#define CONFIG_SPL_I2C_SUPPORT
-#define CONFIG_SPL_WATCHDOG_SUPPORT
-#define CONFIG_SPL_MMC_SUPPORT
-#define CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR	0xe8
+/* CPLD */
 
-#define CONFIG_SPL_MAX_SIZE		0x1a000
-#define CONFIG_SPL_STACK		0x1001d000
-#define CONFIG_SPL_PAD_TO		0x1c000
+#define CFG_SYS_CPLD_BASE              0x7fb00000
+#define CPLD_BASE_PHYS                 CFG_SYS_CPLD_BASE
 
-#define CONFIG_SYS_SPL_MALLOC_START	(CONFIG_SYS_TEXT_BASE + \
-		CONFIG_SYS_MONITOR_LEN)
-#define CONFIG_SYS_SPL_MALLOC_SIZE	0x100000
-#define CONFIG_SPL_BSS_START_ADDR	0x80100000
-#define CONFIG_SPL_BSS_MAX_SIZE		0x80000
-#define CONFIG_SYS_MONITOR_LEN		0x80000
-#endif
+#define CFG_SYS_FPGA_CSPR_EXT          (0x0)
+#define CFG_SYS_FPGA_CSPR              (CSPR_PHYS_ADDR(CPLD_BASE_PHYS) | \
+                                        CSPR_PORT_SIZE_8 | \
+                                        CSPR_MSEL_GPCM | \
+                                        CSPR_V)
+#define CFG_SYS_FPGA_AMASK             IFC_AMASK(64 * 1024)
+#define CFG_SYS_FPGA_CSOR              (CSOR_NOR_ADM_SHIFT(4) | \
+                                        CSOR_NOR_NOR_MODE_AVD_NOR | \
+                                        CSOR_NOR_TRHZ_80)
 
-#define CONFIG_SYS_DDR_SDRAM_BASE	0x80000000UL
-#define CONFIG_SYS_SDRAM_BASE		CONFIG_SYS_DDR_SDRAM_BASE
-
-#define CONFIG_CHIP_SELECTS_PER_CTRL	4
+/* CPLD Timing parameters for IFC GPCM */
+#define CFG_SYS_FPGA_FTIM0             (FTIM0_GPCM_TACSE(0xf) | \
+                                        FTIM0_GPCM_TEADC(0xf) | \
+                                        FTIM0_GPCM_TEAHC(0xf))
+#define CFG_SYS_FPGA_FTIM1             (FTIM1_GPCM_TACO(0xff) | \
+                                        FTIM1_GPCM_TRAD(0x3f))
+#define CFG_SYS_FPGA_FTIM2             (FTIM2_GPCM_TCS(0xf) | \
+                                        FTIM2_GPCM_TCH(0xf) | \
+                                        FTIM2_GPCM_TWP(0xff))
+#define CFG_SYS_FPGA_FTIM3             0x0
+#define CFG_SYS_CSPR0_EXT              CFG_SYS_FPGA_CSPR_EXT
+#define CFG_SYS_CSPR0                  CFG_SYS_FPGA_CSPR
+#define CFG_SYS_AMASK0                 CFG_SYS_FPGA_AMASK
+#define CFG_SYS_CSOR0                  CFG_SYS_FPGA_CSOR
+#define CFG_SYS_CS0_FTIM0              CFG_SYS_FPGA_FTIM0
+#define CFG_SYS_CS0_FTIM1              CFG_SYS_FPGA_FTIM1
+#define CFG_SYS_CS0_FTIM2              CFG_SYS_FPGA_FTIM2
+#define CFG_SYS_CS0_FTIM3              CFG_SYS_FPGA_FTIM3
 
 /*
  * Serial Port
  */
-#define CONFIG_SYS_NS16550_SERIAL
-#define CONFIG_SYS_NS16550_REG_SIZE	1
-#define CONFIG_SYS_NS16550_CLK		get_serial_clock()
+#define CFG_SYS_NS16550_CLK		get_serial_clock()
 
 /*
  * I2C
  */
 
-#if !CONFIG_IS_ENABLED(DM_I2C)
-#define CONFIG_SYS_I2C
-#else
-#define CONFIG_I2C_SET_DEFAULT_BUS_NUM
-#define CONFIG_I2C_DEFAULT_BUS_NUMBER 0
-#endif
-#define CONFIG_SYS_I2C_MXC
-#define CONFIG_SYS_I2C_MXC_I2C1		/* enable I2C bus 1 */
-#define CONFIG_SYS_I2C_MXC_I2C2		/* enable I2C bus 2 */
-#define CONFIG_SYS_I2C_MXC_I2C3		/* enable I2C bus 3 */
-
-/* EEPROM */
-#define CONFIG_ID_EEPROM
-#define CONFIG_SYS_I2C_EEPROM_NXID
-#define CONFIG_SYS_EEPROM_BUS_NUM		0
-#define CONFIG_SYS_I2C_EEPROM_ADDR		0x51
-#define CONFIG_SYS_I2C_EEPROM_ADDR_LEN	2
-
 /*
  * MMC
  */
 
-/* SATA */
-#define CONFIG_SCSI_AHCI_PLAT
-#ifndef PCI_DEVICE_ID_FREESCALE_AHCI
-#define PCI_DEVICE_ID_FREESCALE_AHCI	0x0440
-#endif
-#define CONFIG_SCSI_DEV_LIST		{PCI_VENDOR_ID_FREESCALE, \
-	PCI_DEVICE_ID_FREESCALE_AHCI}
-
-#define CONFIG_SYS_SCSI_MAX_SCSI_ID	1
-#define CONFIG_SYS_SCSI_MAX_LUN		1
-#define CONFIG_SYS_SCSI_MAX_DEVICE	(CONFIG_SYS_SCSI_MAX_SCSI_ID * \
-		CONFIG_SYS_SCSI_MAX_LUN)
-
 /* SPI */
-#if defined(CONFIG_QSPI_BOOT) || defined(CONFIG_SD_BOOT_QSPI)
-#define CONFIG_SPI_FLASH_SPANSION
-#endif
-
-/*
- * eTSEC
- */
-
-#ifdef CONFIG_TSEC_ENET
-#define CONFIG_MII_DEFAULT_TSEC		1
-#define CONFIG_TSEC1			1
-#define CONFIG_TSEC1_NAME		"eTSEC1"
-#define CONFIG_TSEC2			1
-#define CONFIG_TSEC2_NAME		"eTSEC2"
-
-#define TSEC1_PHY_ADDR			1
-#define TSEC2_PHY_ADDR			3
-
-#define TSEC1_FLAGS			(TSEC_GIGABIT | TSEC_REDUCED)
-#define TSEC2_FLAGS			(TSEC_GIGABIT | TSEC_REDUCED)
-
-#define TSEC1_PHYIDX			0
-#define TSEC2_PHYIDX			0
-
-#define CONFIG_ETHPRIME			"eTSEC2"
-
-#define CONFIG_HAS_ETH0
-#define CONFIG_HAS_ETH1
-#define CONFIG_HAS_ETH2
-#endif
-
-/* PCIe */
-#define CONFIG_PCIE1		/* PCIE controler 1 */
-#define CONFIG_PCIE2		/* PCIE controler 2 */
 
 #define FSL_PCIE_COMPAT		"fsl,ls1021a-pcie"
 
-#ifdef CONFIG_PCI
-#define CONFIG_PCI_SCAN_SHOW
-#endif
+#define CFG_SMP_PEN_ADDR		0x01ee0200
 
-#define CONFIG_CMDLINE_TAG
-
-#define CONFIG_PEN_ADDR_BIG_ENDIAN
-#define CONFIG_LAYERSCAPE_NS_ACCESS
-#define CONFIG_SMP_PEN_ADDR		0x01ee0200
-#define COUNTER_FREQUENCY		12500000
-
-#define CONFIG_HWCONFIG
 #define HWCONFIG_BUFFER_SIZE		256
 
-#define CONFIG_FSL_DEVICE_DISABLE
-
-#define CONFIG_EXTRA_ENV_SETTINGS	\
+#define CFG_EXTRA_ENV_SETTINGS	\
 	"bootargs=root=/dev/ram0 rw console=ttyS0,115200\0" \
 "initrd_high=0xffffffff\0"
 
 /*
  * Miscellaneous configurable options
  */
-#define CONFIG_SYS_BOOTMAPSZ		(256 << 20)
-
-#define CONFIG_SYS_LOAD_ADDR		0x82000000
-
-#define CONFIG_LS102XA_STREAM_ID
-
-#define CONFIG_SYS_INIT_SP_OFFSET \
-	(CONFIG_SYS_INIT_RAM_SIZE - GENERATED_GBL_DATA_SIZE)
-#define CONFIG_SYS_INIT_SP_ADDR \
-	(CONFIG_SYS_INIT_RAM_ADDR + CONFIG_SYS_INIT_SP_OFFSET)
-
-#ifdef CONFIG_SPL_BUILD
-#define CONFIG_SYS_MONITOR_BASE CONFIG_SPL_TEXT_BASE
-#else
-/* start of monitor */
-#define CONFIG_SYS_MONITOR_BASE CONFIG_SYS_TEXT_BASE
-#endif
-
-#define CONFIG_SYS_QE_FW_ADDR	0x67f40000
-
-#define CONFIG_OF_BOARD_SETUP
-#define CONFIG_OF_STDOUT_VIA_ALIAS
+#define CFG_SYS_BOOTMAPSZ		(256 << 20)
 
 #include <asm/fsl_secure_boot.h>
 

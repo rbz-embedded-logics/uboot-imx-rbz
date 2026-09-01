@@ -1,7 +1,7 @@
 /*
  * mux.c
  *
- * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C) 2011 Texas Instruments Incorporated - https://www.ti.com/
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -13,7 +13,7 @@
  * GNU General Public License for more details.
  */
 
-#include <common.h>
+#include <config.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/arch/hardware.h>
 #include <asm/arch/mux.h>
@@ -121,6 +121,14 @@ static struct module_pin_mux i2c1_pin_mux[] = {
 			PULLUDEN | SLEWCTRL)},	/* I2C_DATA */
 	{OFFSET(spi0_cs0), (MODE(2) | RXACTIVE |
 			PULLUDEN | SLEWCTRL)},	/* I2C_SCLK */
+	{-1},
+};
+
+static struct module_pin_mux i2c2_pin_mux[] = {
+	{OFFSET(uart1_ctsn), (MODE(3) | RXACTIVE |
+			PULLUDEN | PULLUP_EN | SLEWCTRL)},	/* I2C_DATA */
+	{OFFSET(uart1_rtsn), (MODE(3) | RXACTIVE |
+			PULLUDEN | PULLUP_EN | SLEWCTRL)},	/* I2C_SCLK */
 	{-1},
 };
 
@@ -266,6 +274,47 @@ static struct module_pin_mux uart3_icev2_pin_mux[] = {
 	{-1},
 };
 
+#if (IS_ENABLED(CONFIG_AM335X_LCD))
+static struct module_pin_mux lcd_pin_mux[] = {
+	{OFFSET(lcd_data0), (MODE(0))},		/* LCD-Data(0) */
+	{OFFSET(lcd_data1), (MODE(0))},		/* LCD-Data(1) */
+	{OFFSET(lcd_data2), (MODE(0))},		/* LCD-Data(2) */
+	{OFFSET(lcd_data3), (MODE(0))},		/* LCD-Data(3) */
+	{OFFSET(lcd_data4), (MODE(0))},		/* LCD-Data(4) */
+	{OFFSET(lcd_data5), (MODE(0))},		/* LCD-Data(5) */
+	{OFFSET(lcd_data6), (MODE(0))},		/* LCD-Data(6) */
+	{OFFSET(lcd_data7), (MODE(0))},		/* LCD-Data(7) */
+	{OFFSET(lcd_data8), (MODE(0))},		/* LCD-Data(8) */
+	{OFFSET(lcd_data9), (MODE(0))},		/* LCD-Data(9) */
+	{OFFSET(lcd_data10), (MODE(0))},	/* LCD-Data(10) */
+	{OFFSET(lcd_data11), (MODE(0))},	/* LCD-Data(11) */
+	{OFFSET(lcd_data12), (MODE(0))},	/* LCD-Data(12) */
+	{OFFSET(lcd_data13), (MODE(0))},	/* LCD-Data(13) */
+	{OFFSET(lcd_data14), (MODE(0))},	/* LCD-Data(14) */
+	{OFFSET(lcd_data15), (MODE(0))},	/* LCD-Data(15) */
+	{OFFSET(gpmc_ad15), (MODE(1))},		/* LCD-Data(16) */
+	{OFFSET(gpmc_ad14), (MODE(1))},		/* LCD-Data(17) */
+	{OFFSET(gpmc_ad13), (MODE(1))},		/* LCD-Data(18) */
+	{OFFSET(gpmc_ad12), (MODE(1))},		/* LCD-Data(19) */
+	{OFFSET(gpmc_ad11), (MODE(1))},		/* LCD-Data(20) */
+	{OFFSET(gpmc_ad10), (MODE(1))},		/* LCD-Data(21) */
+	{OFFSET(gpmc_ad9), (MODE(1))},		/* LCD-Data(22) */
+	{OFFSET(gpmc_ad8), (MODE(1))},		/* LCD-Data(23) */
+	{OFFSET(lcd_vsync), (MODE(0))},		/* LCD-VSync */
+	{OFFSET(lcd_hsync), (MODE(0))},		/* LCD-HSync */
+	{OFFSET(lcd_ac_bias_en), (MODE(0))},	/* LCD-DE */
+	{OFFSET(lcd_pclk), (MODE(0))},		/* LCD-CLK */
+	{-1},
+};
+#endif
+
+#if (IS_ENABLED(CONFIG_PWM_TI_ECAP))
+static struct module_pin_mux ecap_pin_mux[] = {
+	{OFFSET(ecap0_in_pwm0_out), (MODE(0))},         /* ecap0_in_pwm0_out */
+	{-1},
+};
+#endif
+
 #if defined(CONFIG_NOR_BOOT)
 void enable_norboot_pin_mux(void)
 {
@@ -308,6 +357,11 @@ void enable_i2c0_pin_mux(void)
 	configure_module_pin_mux(i2c0_pin_mux);
 }
 
+void enable_i2c2_pin_mux(void)
+{
+	configure_module_pin_mux(i2c2_pin_mux);
+}
+
 /*
  * The AM335x GP EVM, if daughter card(s) are connected, can have 8
  * different profiles.  These profiles determine what peripherals are
@@ -332,14 +386,6 @@ void enable_i2c0_pin_mux(void)
 static unsigned short detect_daughter_board_profile(void)
 {
 	unsigned short val;
-
-#if !CONFIG_IS_ENABLED(DM_I2C)
-	if (i2c_probe(I2C_CPLD_ADDR))
-		return PROFILE_NONE;
-
-	if (i2c_read(I2C_CPLD_ADDR, CFG_REG, 1, (unsigned char *)(&val), 2))
-		return PROFILE_NONE;
-#else
 	struct udevice *dev = NULL;
 	int rc;
 
@@ -349,7 +395,6 @@ static unsigned short detect_daughter_board_profile(void)
 	rc = dm_i2c_read(dev, CFG_REG, (unsigned char *)(&val), 2);
 	if (rc)
 		return PROFILE_NONE;
-#endif
 	return (1 << (val & PROFILE_MASK));
 }
 
@@ -367,6 +412,7 @@ void enable_board_pin_mux(void)
 #else
 		configure_module_pin_mux(mmc1_pin_mux);
 #endif
+		configure_module_pin_mux(i2c2_pin_mux);
 	} else if (board_is_gp_evm()) {
 		/* General Purpose EVM */
 		unsigned short profile = detect_daughter_board_profile();
@@ -384,6 +430,13 @@ void enable_board_pin_mux(void)
 			configure_module_pin_mux(mmc1_pin_mux);
 			configure_module_pin_mux(spi0_pin_mux);
 		}
+		#if IS_ENABLED(CONFIG_AM335X_LCD)
+			configure_module_pin_mux(lcd_pin_mux);
+		#endif
+
+		#if IS_ENABLED(CONFIG_PWM_TI_ECAP)
+			configure_module_pin_mux(ecap_pin_mux);
+		#endif
 	} else if (board_is_idk()) {
 		/* Industrial Motor Control (IDK) */
 		configure_module_pin_mux(mii1_pin_mux);
@@ -396,7 +449,15 @@ void enable_board_pin_mux(void)
 		configure_module_pin_mux(mmc0_pin_mux_sk_evm);
 	} else if (board_is_bone_lt()) {
 		if (board_is_bben()) {
+			char subtype_id = board_ti_get_config()[1];
+
 			/* SanCloud Beaglebone LT Enhanced pinmux */
+			configure_module_pin_mux(rgmii1_pin_mux);
+
+			if (subtype_id == 'L')
+				configure_module_pin_mux(spi0_pin_mux);
+		} else if (board_is_bbge()) {
+			/* Beaglebone Green Eco pinmux */
 			configure_module_pin_mux(rgmii1_pin_mux);
 		} else {
 			/* Beaglebone LT pinmux */
@@ -411,6 +472,7 @@ void enable_board_pin_mux(void)
 #else
 		configure_module_pin_mux(mmc1_pin_mux);
 #endif
+		configure_module_pin_mux(i2c2_pin_mux);
 	} else if (board_is_pb()) {
 		configure_module_pin_mux(mii1_pin_mux);
 		configure_module_pin_mux(mmc0_pin_mux);

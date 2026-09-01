@@ -6,7 +6,7 @@
  * The system works in a message response protocol
  * See: http://processors.wiki.ti.com/index.php/TISCI for details
  *
- * Copyright (C)  2018 Texas Instruments Incorporated - http://www.ti.com/
+ * Copyright (C)  2018 Texas Instruments Incorporated - https://www.ti.com/
  * Based on drivers/firmware/ti_sci.h from Linux.
  *
  */
@@ -26,7 +26,9 @@
 #define TI_SCI_MSG_BOARD_CONFIG_RM	0x000c
 #define TI_SCI_MSG_BOARD_CONFIG_SECURITY  0x000d
 #define TI_SCI_MSG_BOARD_CONFIG_PM	0x000e
+#define TI_SCI_MSG_DM_VERSION		0x000f
 #define TISCI_MSG_QUERY_MSMC		0x0020
+#define TI_SCI_MSG_QUERY_FW_CAPS	0x0022
 
 /* Device requests */
 #define TI_SCI_MSG_SET_DEVICE_STATE	0x0200
@@ -49,7 +51,7 @@
 #define TISCI_MSG_PROC_HANDOVER		0xc005
 #define TISCI_MSG_SET_PROC_BOOT_CONFIG	0xc100
 #define TISCI_MSG_SET_PROC_BOOT_CTRL	0xc101
-#define TISCI_MSG_PROC_AUTH_BOOT_IMIAGE	0xc120
+#define TISCI_MSG_PROC_AUTH_BOOT_IMAGE	0xc120
 #define TISCI_MSG_GET_PROC_BOOT_STATUS	0xc400
 #define TISCI_MSG_WAIT_PROC_BOOT_STATUS	0xc401
 
@@ -135,14 +137,56 @@ struct ti_sci_msg_resp_version {
 } __packed;
 
 /**
+ * struct ti_sci_msg_dm_resp_version - Response for a message
+ * @hdr:		Generic header
+ * @version:		Version number of the firmware
+ * @sub_version:	Sub-version number of the firmware
+ * @patch_version:	Patch version number of the firmware
+ * @abi_major:		Major version of the ABI that firmware supports
+ * @abi_minor:		Minor version of the ABI that firmware supports
+ * @sci_server_version: String describing the SCI server version
+ * @rm_pm_hal_version:  String describing the RM PM HAL version
+ *
+ * In general, ABI version changes follow the rule that minor version increments
+ * are backward compatible. Major revision changes in ABI may not be
+ * backward compatible.
+ *
+ * Response to a message with message type TI_SCI_MSG_DM_VERSION
+ */
+struct ti_sci_msg_dm_resp_version {
+	struct ti_sci_msg_hdr hdr;
+	u16	version;
+	u8	sub_version;
+	u8	patch_version;
+	u8	abi_major;
+	u8	abi_minor;
+	char rm_pm_hal_version[12];
+	char sci_server_version[26];
+} __packed;
+
+/**
+ * struct ti_sci_query_fw_caps_resp - Response for a message
+ * @hdr:	Generic header
+ * @fw_caps:	64-bit value representing the FW/SOC capabilities.
+ *
+ * Response to a message with message type TI_SCI_MSG_QUERY_FW_CAPS
+ */
+struct ti_sci_query_fw_caps_resp {
+	struct ti_sci_msg_hdr hdr;
+	u64    fw_caps;
+} __packed;
+
+/**
  * struct ti_sci_msg_req_reboot - Reboot the SoC
  * @hdr:	Generic Header
+ * @domain:	Domain to be reset, 0 for full SoC reboot.
  *
  * Request type is TI_SCI_MSG_SYS_RESET, responded with a generic
  * ACK/NACK message.
  */
 struct ti_sci_msg_req_reboot {
 	struct ti_sci_msg_hdr hdr;
+	u8 domain;
 } __packed;
 
 /**
@@ -998,6 +1042,9 @@ struct ti_sci_msg_psil_unpair {
  *   11 - Valid bit for @ref ti_sci_msg_rm_udmap_tx_ch_cfg::tx_supr_tdpkt
  *   12 - Valid bit for @ref ti_sci_msg_rm_udmap_tx_ch_cfg::tx_credit_count
  *   13 - Valid bit for @ref ti_sci_msg_rm_udmap_tx_ch_cfg::fdepth
+ *   14 - Valid bit for @ref ti_sci_msg_rm_udmap_tx_ch_cfg::tx_burst_size
+ *   15 - Valid bit for @ref ti_sci_msg_rm_udmap_tx_ch_cfg::tx_tdtype
+ *   16 - Valid bit for @ref ti_sci_msg_rm_udmap_tx_ch_cfg::extended_ch_type
  *
  * @nav_id: SoC device ID of Navigator Subsystem where tx channel is located
  *
@@ -1058,6 +1105,18 @@ struct ti_sci_msg_psil_unpair {
  * @tx_sched_priority: UDMAP transmit channel tx scheduling priority
  * configuration to be programmed into the priority field of the channel's
  * TCHAN_TST_SCHED register.
+ *
+ * @tx_burst_size: UDMAP transmit channel burst size configuration to be
+ * programmed into the tx_burst_size field of the TCHAN_TCFG register.
+ *
+ * @tx_tdtype: UDMAP transmit channel teardown type configuration to be
+ * programmed into the tdtype field of the TCHAN_TCFG register:
+ * 0 - Return immediately
+ * 1 - Wait for completion message from remote peer
+ *
+ * @extended_ch_type: Valid for BCDMA.
+ * 0 - the channel is split tx channel (tchan)
+ * 1 - the channel is block copy channel (bchan)
  */
 struct ti_sci_msg_rm_udmap_tx_ch_cfg_req {
 	struct ti_sci_msg_hdr hdr;
@@ -1078,6 +1137,9 @@ struct ti_sci_msg_rm_udmap_tx_ch_cfg_req {
 	u8 tx_orderid;
 	u16 fdepth;
 	u8 tx_sched_priority;
+	u8 tx_burst_size;
+	u8 tx_tdtype;
+	u8 extended_ch_type;
 } __packed;
 
 /**

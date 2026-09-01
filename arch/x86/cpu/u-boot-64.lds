@@ -11,11 +11,9 @@ ENTRY(_start)
 
 SECTIONS
 {
-#ifndef CONFIG_CMDLINE
-	/DISCARD/ : { *(.u_boot_list_2_cmd_*) }
+#ifdef CONFIG_TEXT_BASE
+	. = CONFIG_TEXT_BASE;	/* Location of bootcode in flash */
 #endif
-
-	. = CONFIG_SYS_TEXT_BASE;	/* Location of bootcode in flash */
 	__text_start = .;
 
 	.text.start : { *(.text.start); }
@@ -39,8 +37,8 @@ SECTIONS
 	. = ALIGN(4);
 
 	. = ALIGN(4);
-	.u_boot_list : {
-		KEEP(*(SORT(.u_boot_list*)));
+	__u_boot_list : {
+		KEEP(*(SORT(__u_boot_list*)));
 	}
 
 	. = ALIGN(4);
@@ -88,9 +86,11 @@ SECTIONS
 	__rel_dyn_end = .;
 	. = ALIGN(4);
 
-	.dynamic : { *(.dynamic) }
+	.dynamic : {
+		*(.dynamic)
+		. = ALIGN(8);
+	}
 
-	. = ALIGN(4);
 	_end = .;
 
 	.bss __rel_dyn_start (OVERLAY) : {
@@ -107,4 +107,5 @@ SECTIONS
 	/DISCARD/ : { *(.plt*) }
 	/DISCARD/ : { *(.interp*) }
 	/DISCARD/ : { *(.gnu*) }
+	/DISCARD/ : { *(.note.gnu.property) }
 }

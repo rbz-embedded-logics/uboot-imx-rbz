@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2019-2020 NXP
+ * Copyright 2019-2023 NXP
  */
 
 #include <asm/mach-imx/sys_proto.h>
@@ -18,7 +18,7 @@
 #include <asm/arch/sys_proto.h>
 #include <asm/setup.h>
 #include <env.h>
-#ifdef CONFIG_DM_SCSI
+#ifdef CONFIG_SCSI
 #include <scsi.h>
 #endif
 
@@ -51,7 +51,7 @@ enum {
 struct fastboot_ptentry g_ptable[MAX_PTN];
 unsigned int g_pcount;
 
-static ulong bootloader_mmc_offset(void)
+ulong bootloader_mmc_offset(void)
 {
 	if (is_imx8mq() || is_imx8mm() || ((is_imx8qm() || is_imx8qxp()) && is_soc_rev(CHIP_REV_A)))
 		return 0x8400;
@@ -62,7 +62,7 @@ static ulong bootloader_mmc_offset(void)
 		else
 		/* target device is SD card, bootloader offset is 0x8000 */
 			return 0x8000;
-	} else if (is_imx8mn() || is_imx8mp() || is_imx8dxl() || is_imx8ulp()) {
+	} else if (is_imx8mn() || is_imx8mp() || is_imx8dxl() || is_imx8ulp() || is_imx9()) {
 		/* target device is eMMC boot0 partition, bootloader offset is 0x0 */
 		if (env_get_ulong("emmc_dev", 10, 2) == fastboot_devinfo.dev_id)
 			return 0;
@@ -118,16 +118,16 @@ static int _fastboot_parts_add_ptable_entry(int ptable_index,
 	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_OEM_A) ||
 	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_VENDOR_A) ||
 	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_OEM_B) ||
-	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_VENDOR_B) ||
-	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_DATA) ||
+	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_VENDOR_B))
 #else
 	if (!strcmp((const char *)info.name, FASTBOOT_PARTITION_SYSTEM) ||
-	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_DATA) ||
 	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_DEVICE) ||
-	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_CACHE) ||
+	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_CACHE))
 #endif
-	    !strcmp((const char *)info.name, FASTBOOT_PARTITION_METADATA))
-		strcpy(ptable[ptable_index].fstype, "ext4");
+		strcpy(ptable[ptable_index].fstype, "erofs");
+	else if (!strcmp((const char *)info.name, FASTBOOT_PARTITION_DATA) ||
+	         !strcmp((const char *)info.name, FASTBOOT_PARTITION_METADATA))
+		strcpy(ptable[ptable_index].fstype, "f2fs");
 	else
 		strcpy(ptable[ptable_index].fstype, "raw");
 	return 0;
@@ -150,7 +150,7 @@ static int _fastboot_parts_load_from_ptable(void)
 
 	/* sata case in env */
 	if (fastboot_devinfo.type == DEV_SATA) {
-#ifdef CONFIG_DM_SCSI
+#ifdef CONFIG_SCSI
 		int sata_device_no = fastboot_devinfo.dev_id;
 		puts("flash target is SATA\n");
 		scsi_scan(false);

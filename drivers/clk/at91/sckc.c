@@ -7,7 +7,6 @@
  * Author: Claudiu Beznea <claudiu.beznea@microchip.com>
  */
 
-#include <common.h>
 #include <clk-uclass.h>
 #include <dm.h>
 #include <dt-bindings/clk/at91.h>
@@ -75,8 +74,8 @@ static struct clk *at91_sam9x60_clk_register_td_slck(struct sam9x60_sckc *sckc,
 		int num_parents)
 {
 	struct clk *clk;
-	int ret = -ENOMEM;
-	u32 val, i;
+	int ret = -ENOMEM, i;
+	u32 val;
 
 	if (!sckc || !name || !parent_names || num_parents != 2)
 		return ERR_PTR(-EINVAL);
@@ -100,8 +99,10 @@ static struct clk *at91_sam9x60_clk_register_td_slck(struct sam9x60_sckc *sckc,
 	clk = &sckc->clk;
 	ret = clk_register(clk, UBOOT_DM_CLK_AT91_SAM9X60_TD_SLCK, name,
 			   parent_names[val]);
-	if (ret)
+	if (ret) {
+		i--;
 		goto free;
+	}
 
 	return clk;
 
@@ -123,7 +124,7 @@ U_BOOT_DRIVER(at91_sam9x60_td_slck) = {
 static int at91_sam9x60_sckc_probe(struct udevice *dev)
 {
 	struct sam9x60_sckc *sckc = dev_get_priv(dev);
-	void __iomem *base = (void *)devfdt_get_addr(dev);
+	void __iomem *base = devfdt_get_addr_ptr(dev);
 	const char *slow_rc_osc, *slow_osc;
 	const char *parents[2];
 	struct clk *clk, c;

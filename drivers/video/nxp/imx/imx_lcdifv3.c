@@ -3,10 +3,8 @@
  * Copyright 2019 NXP
  */
 
-#include <common.h>
 #include <malloc.h>
 #include <video.h>
-#include <video_fb.h>
 #include <video_bridge.h>
 #include <video_link.h>
 
@@ -53,10 +51,10 @@ static int lcdifv3_set_pix_fmt(struct lcdifv3_priv *priv, unsigned int format)
 	ctrldescl0_5 &= ~(CTRLDESCL0_5_BPP(0xf) | CTRLDESCL0_5_YUV_FORMAT(0x3));
 
 	switch (format) {
-	case GDF_16BIT_565RGB:
+	case VIDEO_BPP16:
 		ctrldescl0_5 |= CTRLDESCL0_5_BPP(BPP16_RGB565);
 		break;
-	case GDF_32BIT_X888RGB:
+	case VIDEO_BPP32:
 		ctrldescl0_5 |= CTRLDESCL0_5_BPP(BPP32_ARGB8888);
 		break;
 	default:
@@ -99,8 +97,15 @@ static void lcdifv3_set_mode(struct lcdifv3_priv *priv,
 	writel(ctrldescl0_1, (ulong)(priv->reg_base + LCDIFV3_CTRLDESCL0_1));
 
 	/* Polarities */
-	writel(CTRL_INV_HS, (ulong)(priv->reg_base + LCDIFV3_CTRL_CLR));
-	writel(CTRL_INV_VS, (ulong)(priv->reg_base + LCDIFV3_CTRL_CLR));
+	if (mode->sync & FB_SYNC_VERT_HIGH_ACT)
+		writel(CTRL_INV_VS, (ulong)(priv->reg_base + LCDIFV3_CTRL_CLR));
+	else
+		writel(CTRL_INV_VS, (ulong)(priv->reg_base + LCDIFV3_CTRL_SET));
+
+	if (mode->sync & FB_SYNC_HOR_HIGH_ACT)
+		writel(CTRL_INV_HS, (ulong)(priv->reg_base + LCDIFV3_CTRL_CLR));
+	else
+		writel(CTRL_INV_HS, (ulong)(priv->reg_base + LCDIFV3_CTRL_SET));
 
 	/* SEC MIPI DSI specific */
 	writel(CTRL_INV_PXCK, (ulong)(priv->reg_base + LCDIFV3_CTRL_CLR));
@@ -113,13 +118,13 @@ static void lcdifv3_set_bus_fmt(struct lcdifv3_priv *priv)
 	uint32_t disp_para = 0;
 
 	disp_para = readl((ulong)(priv->reg_base + LCDIFV3_DISP_PARA));
-	disp_para &= DISP_PARA_LINE_PATTERN(0xf);
+	disp_para &= ~DISP_PARA_LINE_PATTERN(0xf);
 
 	/* Fixed to 24 bits output */
 	disp_para |= DISP_PARA_LINE_PATTERN(LP_RGB888_OR_YUV444);
 
 	/* config display mode: default is normal mode */
-	disp_para &= DISP_PARA_DISP_MODE(3);
+	disp_para &= ~DISP_PARA_DISP_MODE(3);
 	disp_para |= DISP_PARA_DISP_MODE(0);
 	writel(disp_para, (ulong)(priv->reg_base + LCDIFV3_DISP_PARA));
 }
@@ -316,7 +321,6 @@ static void lcdifv3_of_parse_thres(struct udevice *dev)
 	}
 }
 
-
 static int lcdifv3_video_probe(struct udevice *dev)
 {
 	struct video_uc_plat *plat = dev_get_uclass_plat(dev);
@@ -353,6 +357,12 @@ static int lcdifv3_video_probe(struct udevice *dev)
 				return ret;
 			}
 
+			ret = video_bridge_check_timing(priv->disp_dev, &timings);
+			if (ret) {
+				dev_err(dev, "fail to check timing\n");
+				return ret;
+			}
+
 			ret = video_bridge_set_backlight(priv->disp_dev, 80);
 			if (ret) {
 				dev_err(dev, "fail to set backlight\n");
@@ -371,8 +381,15 @@ static int lcdifv3_video_probe(struct udevice *dev)
 	mode.hsync_len = timings.hsync_len.typ;
 	mode.vsync_len = timings.vsync_len.typ;
 	mode.pixclock = HZ2PS(timings.pixelclock.typ);
+	mode.sync = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT;
 
-	lcdifv3_init(dev, &mode, GDF_32BIT_X888RGB);
+	if (timings.flags & DISPLAY_FLAGS_HSYNC_LOW )
+		mode.sync &= ~FB_SYNC_HOR_HIGH_ACT;
+
+	if (timings.flags & DISPLAY_FLAGS_VSYNC_LOW )
+		mode.sync &= ~FB_SYNC_VERT_HIGH_ACT;
+
+	lcdifv3_init(dev, &mode, VIDEO_BPP32);
 
 	uc_priv->bpix = VIDEO_BPP32; /* only support 32 BPP now */
 	uc_priv->xsize = mode.xres;
@@ -385,7 +402,6 @@ static int lcdifv3_video_probe(struct udevice *dev)
 	mmu_set_region_dcache_behaviour(fb_start, fb_end - fb_start,
 					DCACHE_WRITEBACK);
 	video_set_flush_dcache(dev, true);
-	gd->fb_base = plat->base;
 
 	return ret;
 }
@@ -416,6 +432,7 @@ static int lcdifv3_video_remove(struct udevice *dev)
 
 static const struct udevice_id lcdifv3_video_ids[] = {
 	{ .compatible = "fsl,imx8mp-lcdif1" },
+	{ .compatible = "fsl,imx93-lcdif" },
 	{ /* sentinel */ }
 };
 

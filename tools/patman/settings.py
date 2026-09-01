@@ -1,18 +1,20 @@
 # SPDX-License-Identifier: GPL-2.0+
 # Copyright (c) 2011 The Chromium OS Authors.
+# Copyright (c) 2022 Maxim Cournoyer <maxim.cournoyer@savoirfairelinux.com>
 #
 
 try:
     import configparser as ConfigParser
-except:
+except Exception:
     import ConfigParser
 
 import argparse
+from io import StringIO
 import os
 import re
+import sys
 
-from patman import command
-from patman import tools
+from u_boot_pylib import gitutil
 
 """Default settings per-project.
 
@@ -23,6 +25,7 @@ _default_settings = {
     "u-boot": {},
     "linux": {
         "process_tags": "False",
+        "check_patch_use_tree": "True",
     },
     "gcc": {
         "process_tags": "False",
@@ -31,7 +34,8 @@ _default_settings = {
     },
 }
 
-class _ProjectConfigParser(ConfigParser.SafeConfigParser):
+
+class _ProjectConfigParser(ConfigParser.ConfigParser):
     """ConfigParser that handles projects.
 
     There are two main goals of this class:
@@ -57,39 +61,39 @@ class _ProjectConfigParser(ConfigParser.SafeConfigParser):
 
     # Check to make sure that bogus project gets general alias.
     >>> config = _ProjectConfigParser("zzz")
-    >>> config.readfp(StringIO(sample_config))
+    >>> config.read_file(StringIO(sample_config))
     >>> str(config.get("alias", "enemies"))
     'Evil <evil@example.com>'
 
     # Check to make sure that alias gets overridden by project.
     >>> config = _ProjectConfigParser("sm")
-    >>> config.readfp(StringIO(sample_config))
+    >>> config.read_file(StringIO(sample_config))
     >>> str(config.get("alias", "enemies"))
     'Green G. <ugly@example.com>'
 
     # Check to make sure that settings get merged with project.
     >>> config = _ProjectConfigParser("linux")
-    >>> config.readfp(StringIO(sample_config))
+    >>> config.read_file(StringIO(sample_config))
     >>> sorted((str(a), str(b)) for (a, b) in config.items("settings"))
-    [('am_hero', 'True'), ('process_tags', 'False')]
+    [('am_hero', 'True'), ('check_patch_use_tree', 'True'), ('process_tags', 'False')]
 
     # Check to make sure that settings works with unknown project.
     >>> config = _ProjectConfigParser("unknown")
-    >>> config.readfp(StringIO(sample_config))
+    >>> config.read_file(StringIO(sample_config))
     >>> sorted((str(a), str(b)) for (a, b) in config.items("settings"))
     [('am_hero', 'True')]
     """
     def __init__(self, project_name):
         """Construct _ProjectConfigParser.
 
-        In addition to standard SafeConfigParser initialization, this also loads
-        project defaults.
+        In addition to standard ConfigParser initialization, this also
+        loads project defaults.
 
         Args:
             project_name: The name of the project.
         """
         self._project_name = project_name
-        ConfigParser.SafeConfigParser.__init__(self)
+        ConfigParser.ConfigParser.__init__(self)
 
         # Update the project settings in the config based on
         # the _default_settings global.
@@ -101,31 +105,31 @@ class _ProjectConfigParser(ConfigParser.SafeConfigParser):
             self.set(project_settings, setting_name, setting_value)
 
     def get(self, section, option, *args, **kwargs):
-        """Extend SafeConfigParser to try project_section before section.
+        """Extend ConfigParser to try project_section before section.
 
         Args:
-            See SafeConfigParser.
+            See ConfigParser.
         Returns:
-            See SafeConfigParser.
+            See ConfigParser.
         """
         try:
-            val = ConfigParser.SafeConfigParser.get(
+            val = ConfigParser.ConfigParser.get(
                 self, "%s_%s" % (self._project_name, section), option,
                 *args, **kwargs
             )
         except (ConfigParser.NoSectionError, ConfigParser.NoOptionError):
-            val = ConfigParser.SafeConfigParser.get(
+            val = ConfigParser.ConfigParser.get(
                 self, section, option, *args, **kwargs
             )
         return val
 
     def items(self, section, *args, **kwargs):
-        """Extend SafeConfigParser to add project_section to section.
+        """Extend ConfigParser to add project_section to section.
 
         Args:
-            See SafeConfigParser.
+            See ConfigParser.
         Returns:
-            See SafeConfigParser.
+            See ConfigParser.
         """
         project_items = []
         has_project_section = False
@@ -133,7 +137,7 @@ class _ProjectConfigParser(ConfigParser.SafeConfigParser):
 
         # Get items from the project section
         try:
-            project_items = ConfigParser.SafeConfigParser.items(
+            project_items = ConfigParser.ConfigParser.items(
                 self, "%s_%s" % (self._project_name, section), *args, **kwargs
             )
             has_project_section = True
@@ -142,7 +146,7 @@ class _ProjectConfigParser(ConfigParser.SafeConfigParser):
 
         # Get top-level items
         try:
-            top_items = ConfigParser.SafeConfigParser.items(
+            top_items = ConfigParser.ConfigParser.items(
                 self, section, *args, **kwargs
             )
         except ConfigParser.NoSectionError:
@@ -153,6 +157,7 @@ class _ProjectConfigParser(ConfigParser.SafeConfigParser):
         item_dict = dict(top_items)
         item_dict.update(project_items)
         return {(item, val) for item, val in item_dict.items()}
+
 
 def ReadGitAliases(fname):
     """Read a git alias file. This is in the form used by git:
@@ -169,7 +174,7 @@ def ReadGitAliases(fname):
         print("Warning: Cannot find alias file '%s'" % fname)
         return
 
-    re_line = re.compile('alias\s+(\S+)\s+(.*)')
+    re_line = re.compile(r'alias\s+(\S+)\s+(.*)')
     for line in fd.readlines():
         line = line.strip()
         if not line or line[0] == '#':
@@ -189,7 +194,8 @@ def ReadGitAliases(fname):
 
     fd.close()
 
-def CreatePatmanConfigFile(gitutil, config_fname):
+
+def CreatePatmanConfigFile(config_fname):
     """Creates a config file under $(HOME)/.patman if it can't find one.
 
     Args:
@@ -198,14 +204,14 @@ def CreatePatmanConfigFile(gitutil, config_fname):
     Returns:
         None
     """
-    name = gitutil.GetDefaultUserName()
-    if name == None:
-        name = raw_input("Enter name: ")
+    name = gitutil.get_default_user_name()
+    if name is None:
+        name = input("Enter name: ")
 
-    email = gitutil.GetDefaultUserEmail()
+    email = gitutil.get_default_user_email()
 
-    if email == None:
-        email = raw_input("Enter email: ")
+    if email is None:
+        email = input("Enter email: ")
 
     try:
         f = open(config_fname, 'w')
@@ -219,9 +225,10 @@ me: %s <%s>
 [bounces]
 nxp = Zhikang Zhang <zhikang.zhang@nxp.com>
 ''' % (name, email), file=f)
-    f.close();
+    f.close()
 
-def _UpdateDefaults(main_parser, config):
+
+def _UpdateDefaults(main_parser, config, argv):
     """Update the given OptionParser defaults based on config.
 
     We'll walk through all of the settings from all parsers.
@@ -237,18 +244,56 @@ def _UpdateDefaults(main_parser, config):
             updated.
         config: An instance of _ProjectConfigParser that we will query
             for settings.
+        argv (list of str or None): Arguments to parse
     """
     # Find all the parsers and subparsers
     parsers = [main_parser]
     parsers += [subparser for action in main_parser._actions
-                  if isinstance(action, argparse._SubParsersAction)
-                  for _, subparser in action.choices.items()]
+                if isinstance(action, argparse._SubParsersAction)
+                for _, subparser in action.choices.items()]
 
     # Collect the defaults from each parser
     defaults = {}
+    parser_defaults = []
+    argv = list(argv)
+    orig_argv = argv
+
+    bad = False
+    full_parser_list = []
     for parser in parsers:
-        pdefs = parser.parse_known_args()[0]
-        defaults.update(vars(pdefs))
+        argv_list = [orig_argv]
+        special_cases = []
+        if hasattr(parser, 'defaults_cmds'):
+           special_cases = parser.defaults_cmds
+        for action in parser._actions:
+            if action.choices:
+                argv_list = []
+                for choice in action.choices:
+                    argv = None
+                    for case in special_cases:
+                        if case[0] == choice:
+                            argv = case
+                    argv_list.append(argv or [choice])
+
+        for argv in argv_list:
+            parser.message = None
+            old_val = parser.catch_error
+            try:
+                parser.catch_error = True
+                pdefs = parser.parse_known_args(argv)[0]
+            finally:
+                parser.catch_error = old_val
+
+            # if parser.message:
+                # print('bad', argv, parser.message)
+                # bad = True
+
+            parser_defaults.append(pdefs)
+            defaults.update(vars(pdefs))
+            full_parser_list.append(parser)
+    if bad:
+        print('Internal parsing error')
+        sys.exit(1)
 
     # Go through the settings and collect defaults
     for name, val in config.items('settings'):
@@ -263,9 +308,19 @@ def _UpdateDefaults(main_parser, config):
             defaults[name] = val
         else:
             print("WARNING: Unknown setting %s" % name)
+    if 'cmd' in defaults:
+        del defaults['cmd']
+    if 'subcmd' in defaults:
+        del defaults['subcmd']
 
-    # Set all the defaults (this propagates through all subparsers)
+    # Set all the defaults and manually propagate them to subparsers
     main_parser.set_defaults(**defaults)
+    assert len(full_parser_list) == len(parser_defaults)
+    for parser, pdefs in zip(full_parser_list, parser_defaults):
+        parser.set_defaults(**{k: v for k, v in defaults.items()
+                               if k in pdefs})
+    return defaults
+
 
 def _ReadAliasFile(fname):
     """Read in the U-Boot git alias file if it exists.
@@ -292,6 +347,7 @@ def _ReadAliasFile(fname):
         if bad_line:
             print(bad_line)
 
+
 def _ReadBouncesFile(fname):
     """Read in the bounces file if it exists
 
@@ -305,6 +361,7 @@ def _ReadBouncesFile(fname):
                     continue
                 bounces.add(line.strip())
 
+
 def GetItems(config, section):
     """Get the items from a section of the config.
 
@@ -317,31 +374,55 @@ def GetItems(config, section):
     """
     try:
         return config.items(section)
-    except ConfigParser.NoSectionError as e:
+    except ConfigParser.NoSectionError:
         return []
-    except:
-        raise
 
-def Setup(gitutil, parser, project_name, config_fname=''):
+
+def Setup(parser, project_name, argv, config_fname=None):
     """Set up the settings module by reading config files.
 
+    Unless `config_fname` is specified, a `.patman` config file local
+    to the git repository is consulted, followed by the global
+    `$HOME/.patman`. If none exists, the later is created. Values
+    defined in the local config file take precedence over those
+    defined in the global one.
+
     Args:
-        parser:         The parser to update
+        parser:         The parser to update.
         project_name:   Name of project that we're working on; we'll look
             for sections named "project_section" as well.
-        config_fname:   Config filename to read ('' for default)
+        config_fname:   Config filename to read, or None for default, or False
+            for an empty config.  An error is raised if it does not exist.
+        argv (list of str or None): Arguments to parse, or None for default
     """
     # First read the git alias file if available
     _ReadAliasFile('doc/git-mailrc')
     config = _ProjectConfigParser(project_name)
-    if config_fname == '':
+
+    if config_fname and not os.path.exists(config_fname):
+        raise Exception(f'provided {config_fname} does not exist')
+
+    if config_fname is None:
         config_fname = '%s/.patman' % os.getenv('HOME')
+    git_local_config_fname = os.path.join(gitutil.get_top_level() or '',
+                                          '.patman')
 
-    if not os.path.exists(config_fname):
-        print("No config file found ~/.patman\nCreating one...\n")
-        CreatePatmanConfigFile(gitutil, config_fname)
+    has_config = False
+    has_git_local_config = False
+    if config_fname is not False:
+        has_config = os.path.exists(config_fname)
+        has_git_local_config = os.path.exists(git_local_config_fname)
 
-    config.read(config_fname)
+    # Read the git local config last, so that its values override
+    # those of the global config, if any.
+    if has_config:
+        config.read(config_fname)
+    if has_git_local_config:
+        config.read(git_local_config_fname)
+
+    if config_fname is not False and not (has_config or has_git_local_config):
+        print("No config file found.\nCreating ~/.patman...\n")
+        CreatePatmanConfigFile(config_fname)
 
     for name, value in GetItems(config, 'alias'):
         alias[name] = value.split(',')
@@ -350,7 +431,8 @@ def Setup(gitutil, parser, project_name, config_fname=''):
     for name, value in GetItems(config, 'bounces'):
         bounces.add(value)
 
-    _UpdateDefaults(parser, config)
+    return _UpdateDefaults(parser, config, argv)
+
 
 # These are the aliases we understand, indexed by alias. Each member is a list.
 alias = {}

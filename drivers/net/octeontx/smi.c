@@ -314,29 +314,32 @@ read_error:
 
 int octeontx_smi_probe(struct udevice *dev)
 {
-	int ret, subnode, cnt = 0, node = dev_ofnode(dev).of_offset;
-	struct mii_dev *bus;
-	struct octeontx_smi_priv *priv;
 	pci_dev_t bdf = dm_pci_get_bdf(dev);
+	struct octeontx_smi_priv *priv;
+	struct mii_dev *bus;
+	int ret, cnt = 0;
+	ofnode subnode;
+	u64 baseaddr;
 
 	debug("SMI PCI device: %x\n", bdf);
-	if (!dm_pci_map_bar(dev, PCI_BASE_ADDRESS_0, PCI_REGION_MEM)) {
+	if (!dm_pci_map_bar(dev, PCI_BASE_ADDRESS_0, 0, 0, PCI_REGION_TYPE, PCI_REGION_MEM)) {
 		printf("Failed to map PCI region for bdf %x\n", bdf);
 		return -1;
 	}
 
-	fdt_for_each_subnode(subnode, gd->fdt_blob, node) {
-		ret = fdt_node_check_compatible(gd->fdt_blob, subnode,
-						"cavium,thunder-8890-mdio");
-		if (ret)
+	dev_for_each_subnode(subnode, dev) {
+		if (!ofnode_device_is_compatible(subnode,
+						 "cavium,thunder-8890-mdio"))
 			continue;
-
+		if (ofnode_read_u64(subnode, "reg", &baseaddr))
+			continue;
 		bus = mdio_alloc();
 		priv = malloc(sizeof(*priv));
 		if (!bus || !priv) {
 			printf("Failed to allocate OcteonTX MDIO bus # %u\n",
 			       dev_seq(dev));
-			return -1;
+			ret = -ENOMEM;
+			goto error_ret;
 		}
 
 		bus->read = octeontx_phy_read;
@@ -345,9 +348,7 @@ int octeontx_smi_probe(struct udevice *dev)
 		bus->priv = priv;
 
 		priv->mode = CLAUSE22;
-		priv->baseaddr = (void __iomem *)fdtdec_get_addr(gd->fdt_blob,
-								 subnode,
-								 "reg");
+		priv->baseaddr = (void __iomem *)baseaddr;
 		debug("mdio base addr %p\n", priv->baseaddr);
 
 		/* use given name or generate its own unique name */
@@ -355,9 +356,16 @@ int octeontx_smi_probe(struct udevice *dev)
 
 		ret = mdio_register(bus);
 		if (ret)
-			return ret;
+			goto error_ret;
 	}
 	return 0;
+
+error_ret:
+	if (bus)
+		free(bus);
+	if (priv)
+		free(priv);
+	return ret;
 }
 
 static const struct udevice_id octeontx_smi_ids[] = {

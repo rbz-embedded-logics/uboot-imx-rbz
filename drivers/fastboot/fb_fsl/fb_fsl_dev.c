@@ -37,6 +37,8 @@ static lbaint_t mmc_sparse_write(struct sparse_storage *info,
 		fill_buf_num_blks = SPARSE_FILL_BUF_SIZE / info->blksz;
 
 		data = memalign(CONFIG_SYS_CACHELINE_SIZE, fill_buf_num_blks * info->blksz);
+		if (!data)
+			return ret;
 
 		while (blkcnt) {
 
@@ -465,9 +467,11 @@ void fastboot_process_flash(const char *cmdbuf, void *download_buffer,
 			process_flash_sf(cmdbuf, download_buffer,
 				download_bytes, response);
 			break;
-#ifdef CONFIG_ARCH_IMX8M
+#if defined(CONFIG_ARCH_IMX8M) || defined(CONFIG_IMX95) || defined(CONFIG_IMX952)
 		case DEV_MMC:
+#ifdef CONFIG_ARCH_IMX8M
 			if (is_tcm_image(download_buffer))
+#endif
 				process_flash_blkdev(cmdbuf, download_buffer,
 					download_bytes, response);
 			break;

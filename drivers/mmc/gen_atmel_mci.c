@@ -8,8 +8,9 @@
  * Copyright (C) 2004-2006 Atmel Corporation
  */
 
-#include <common.h>
+#include <config.h>
 #include <clk.h>
+#include <display_options.h>
 #include <dm.h>
 #include <log.h>
 #include <mmc.h>
@@ -23,8 +24,8 @@
 #include <asm/arch/hardware.h>
 #include "atmel_mci.h"
 
-#ifndef CONFIG_SYS_MMC_CLK_OD
-# define CONFIG_SYS_MMC_CLK_OD	150000
+#ifndef CFG_SYS_MMC_CLK_OD
+# define CFG_SYS_MMC_CLK_OD	150000
 #endif
 
 #define MMC_DEFAULT_BLKLEN	512
@@ -205,10 +206,9 @@ static u32 mci_data_read(atmel_mci_t *mci, u32* data, u32 error_flags)
 			goto io_fail;
 	} while (!(status & MMCI_BIT(RXRDY)));
 
-	if (status & MMCI_BIT(RXRDY)) {
-		*data = readl(&mci->rdr);
-		status = 0;
-	}
+	*data = readl(&mci->rdr);
+	status = 0;
+
 io_fail:
 	return status;
 }
@@ -224,10 +224,9 @@ static u32 mci_data_write(atmel_mci_t *mci, u32* data, u32 error_flags)
 			goto io_fail;
 	} while (!(status & MMCI_BIT(TXRDY)));
 
-	if (status & MMCI_BIT(TXRDY)) {
-		writel(*data, &mci->tdr);
-		status = 0;
-	}
+	writel(*data, &mci->tdr);
+	status = 0;
+
 io_fail:
 	return status;
 }
@@ -264,13 +263,15 @@ mci_send_cmd(struct mmc *mmc, struct mmc_cmd *cmd, struct mmc_data *data)
 	/* Figure out the transfer arguments */
 	cmdr = mci_encode_cmd(cmd, data, &error_flags);
 
-	mci_set_blklen(mci, data->blocksize);
+	if (data) {
+		mci_set_blklen(mci, data->blocksize);
 
-	/* For multi blocks read/write, set the block register */
-	if ((cmd->cmdidx == MMC_CMD_READ_MULTIPLE_BLOCK)
-			|| (cmd->cmdidx == MMC_CMD_WRITE_MULTIPLE_BLOCK))
-		writel(data->blocks | MMCI_BF(BLKLEN, data->blocksize),
-		       &mci->blkr);
+		/* For multi blocks read/write, set the block register */
+		if (cmd->cmdidx == MMC_CMD_READ_MULTIPLE_BLOCK ||
+		    cmd->cmdidx == MMC_CMD_WRITE_MULTIPLE_BLOCK)
+			writel(data->blocks | MMCI_BF(BLKLEN, data->blocksize),
+			       &mci->blkr);
+	}
 
 	/* Send the command */
 	writel(cmd->cmdarg, &mci->argr);
@@ -447,9 +448,9 @@ static int mci_init(struct mmc *mmc)
 
 	/* Set default clocks and blocklen */
 #ifdef CONFIG_DM_MMC
-	mci_set_mode(dev, CONFIG_SYS_MMC_CLK_OD, MMC_DEFAULT_BLKLEN);
+	mci_set_mode(dev, CFG_SYS_MMC_CLK_OD, MMC_DEFAULT_BLKLEN);
 #else
-	mci_set_mode(mmc, CONFIG_SYS_MMC_CLK_OD, MMC_DEFAULT_BLKLEN);
+	mci_set_mode(mmc, CFG_SYS_MMC_CLK_OD, MMC_DEFAULT_BLKLEN);
 #endif
 
 	return 0;
@@ -558,27 +559,20 @@ static int atmel_mci_enable_clk(struct udevice *dev)
 	int ret = 0;
 
 	ret = clk_get_by_index(dev, 0, &clk);
-	if (ret) {
-		ret = -EINVAL;
-		goto failed;
-	}
+	if (ret)
+		return -EINVAL;
 
 	ret = clk_enable(&clk);
 	if (ret)
-		goto failed;
+		return ret;
 
 	clk_rate = clk_get_rate(&clk);
-	if (!clk_rate) {
-		ret = -EINVAL;
-		goto failed;
-	}
+	if (!clk_rate)
+		return -EINVAL;
 
 	priv->bus_clk_rate = clk_rate;
 
-failed:
-	clk_free(&clk);
-
-	return ret;
+	return 0;
 }
 
 static int atmel_mci_probe(struct udevice *dev)

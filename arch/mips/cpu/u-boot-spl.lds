@@ -13,7 +13,9 @@ SECTIONS
 
 	. = ALIGN(4);
 	.text : {
+		__text_start = .;
 		*(.text*)
+		__text_end = .;
 	} > .spl_mem
 
 	. = ALIGN(4);
@@ -25,17 +27,19 @@ SECTIONS
 	.data : {
 		*(SORT_BY_ALIGNMENT(.data*))
 		*(SORT_BY_ALIGNMENT(.sdata*))
+		. = ALIGN(8);
 	} > .spl_mem
 
 #if defined(CONFIG_SPL_DM) || defined(CONFIG_SPL_LOADER_SUPPORT)
 	. = ALIGN(4);
-	.u_boot_list : {
-		KEEP(*(SORT(.u_boot_list*)));
+	__u_boot_list : {
+		KEEP(*(SORT(__u_boot_list*)));
+		. = ALIGN(8);
 	} > .spl_mem
 #endif
 
-	. = ALIGN(4);
 	__image_copy_end = .;
+	__image_copy_len = __image_copy_end - __text_start;
 
 	_image_binary_end = .;
 
@@ -120,3 +124,6 @@ SECTIONS
 		*(.eh_frame)
 	}
 }
+
+ASSERT(_image_binary_end % 8 == 0, \
+       "_image_binary_end must be 8-byte aligned for device tree");

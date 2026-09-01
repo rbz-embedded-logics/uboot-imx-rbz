@@ -5,7 +5,6 @@
  * Copyright (C) 2009-2010, Intel Corporation and its suppliers.
  */
 
-#include <common.h>
 #include <dm.h>
 #include <malloc.h>
 #include <nand.h>
@@ -174,13 +173,9 @@ static uint32_t denali_wait_for_irq(struct denali_nand_info *denali,
 		time_left--;
 	}
 
-	if (!time_left) {
-		dev_err(denali->dev, "timeout while waiting for irq 0x%x\n",
-			irq_mask);
-		return 0;
-	}
-
-	return denali->irq_status;
+	dev_err(denali->dev, "timeout while waiting for irq 0x%x\n",
+		irq_mask);
+	return 0;
 }
 
 static uint32_t denali_check_irq(struct denali_nand_info *denali)
@@ -1246,7 +1241,7 @@ int denali_init(struct denali_nand_info *denali)
 
 	denali->active_bank = DENALI_INVALID_BANK;
 
-	chip->flash_node = dev_of_offset(denali->dev);
+	chip->flash_node = dev_ofnode(denali->dev);
 	/* Fallback to the default name if DT did not give "label" property */
 	if (!mtd->name)
 		mtd->name = "denali-nand";

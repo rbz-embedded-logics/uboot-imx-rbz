@@ -51,6 +51,7 @@
 #endif
 
 #define FASTBOOT_PARTITION_METADATA "metadata"
+#define ERASE_UBOOT_ENV "erase_uboot_env"
 
 #ifdef CONFIG_ANDROID_AB_SUPPORT
 #define FASTBOOT_PARTITION_BOOT_A "boot_a"
@@ -89,6 +90,7 @@
 #define FASTBOOT_SET_RPMB_STAGED_KEY "set-rpmb-staged-key"
 #define FASTBOOT_SET_RPMB_HARDWARE_KEY "set-rpmb-hardware-key"
 #define FASTBOOT_SET_VBMETA_PUBLIC_KEY "set-public-key"
+#define FASTBOOT_SET_GBL_PUBLIC_KEY "set-gbl-public-key"
 #define FASTBOOT_ERASE_RPMB "erase-rpmb"
 #endif
 
@@ -107,6 +109,14 @@
 #define FASTBOOT_SET_ATTESTATION_ID "set-device-id"
 #define FASTBOOT_WV_PROVISION	"provision-wv-keybox"
 #define FASTBOOT_WV_PROVISION_ENC	"provision-wv-keybox-enc"
+#define FASTBOOT_GENERATE_DEK_BLOB	"generate-dek-blob"
+#define FASTBOOT_FIRMWARE_SIGN_KEY      "provision-firmware-sign-key"
+#define FASTBOOT_FIRMWARE_ENCRYPT_KEY   "provision-firmware-encrypt-key"
+#define FASTBOOT_PROVISION_SPL_DEK_BLOB       "provision-spl-dek-blob"
+#define FASTBOOT_PROVISION_BOOTLOADER_DEK_BLOB       "provision-bootloader-dek-blob"
+#define FASTBOOT_GET_SPL_DEK_BLOB           "get-spl-dek-blob"
+#define FASTBOOT_GET_BOOTLOADER_DEK_BLOB           "get-bootloader-dek-blob"
+#define FASTBOOT_SRM_PROVISION    "provision-srm"
 #endif
 
 #ifdef CONFIG_ANDROID_THINGS_SUPPORT
@@ -119,6 +129,13 @@
 #define FASTBOOT_AT_GET_UNLOCK_CHALLENGE "at-get-vboot-unlock-challenge"
 #endif /* CONFIG_AVB_ATX */
 #endif /* CONFIG_ANDROID_THINGS_SUPPORT */
+
+#ifdef CONFIG_IMX_MATTER_TRUSTY
+#define SET_MATTER_DAC_CERT "set-matter-dac-cert"
+#define SET_MATTER_PAI_CERT "set-matter-pai-cert"
+#define SET_MATTER_CD_CERT  "set-matter-cd-cert"
+#define SET_MATTER_DAC_PRIKEY  "set-matter-dac-private-key"
+#endif
 
 #ifndef TEE_HWPARTITION_ID
 #define TEE_HWPARTITION_ID 2

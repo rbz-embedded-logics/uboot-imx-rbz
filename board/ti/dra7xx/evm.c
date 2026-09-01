@@ -9,11 +9,10 @@
  * Aneesh V       <aneesh@ti.com>
  * Steve Sakoman  <steve@sakoman.com>
  */
-#include <common.h>
+#include <config.h>
 #include <env.h>
 #include <fdt_support.h>
 #include <fastboot.h>
-#include <image.h>
 #include <init.h>
 #include <spl.h>
 #include <net.h>
@@ -26,7 +25,6 @@
 #include <usb.h>
 #include <linux/usb/gadget.h>
 #include <asm/omap_common.h>
-#include <asm/omap_sec_common.h>
 #include <asm/arch/gpio.h>
 #include <asm/arch/dra7xx_iodelay.h>
 #include <asm/emif.h>
@@ -40,6 +38,7 @@
 
 #include "mux_data.h"
 #include "../common/board_detect.h"
+#include "../common/fdt_ops.h"
 
 #define board_is_dra76x_evm()		board_ti_is("DRA76/7x")
 #define board_is_dra74x_evm()		board_ti_is("5777xCPU")
@@ -279,13 +278,13 @@ void emif_get_reg_dump(u32 emif_nr, const struct emif_regs **regs)
 	case DRA752_ES2_0:
 		switch (emif_nr) {
 		case 1:
-			if (ram_size > CONFIG_MAX_MEM_MAPPED)
+			if (ram_size > CFG_MAX_MEM_MAPPED)
 				*regs = &emif1_ddr3_532_mhz_1cs_2G;
 			else
 				*regs = &emif1_ddr3_532_mhz_1cs;
 			break;
 		case 2:
-			if (ram_size > CONFIG_MAX_MEM_MAPPED)
+			if (ram_size > CFG_MAX_MEM_MAPPED)
 				*regs = &emif2_ddr3_532_mhz_1cs_2G;
 			else
 				*regs = &emif2_ddr3_532_mhz_1cs;
@@ -303,7 +302,7 @@ void emif_get_reg_dump(u32 emif_nr, const struct emif_regs **regs)
 	case DRA722_ES1_0:
 	case DRA722_ES2_0:
 	case DRA722_ES2_1:
-		if (ram_size < CONFIG_MAX_MEM_MAPPED)
+		if (ram_size < CFG_MAX_MEM_MAPPED)
 			*regs = &emif_1_regs_ddr3_666_mhz_1cs_dra_es1;
 		else
 			*regs = &emif_1_regs_ddr3_666_mhz_1cs_dra_es2;
@@ -362,7 +361,7 @@ void emif_get_dmm_regs(const struct dmm_lisa_map_regs **dmm_lisa_regs)
 	case DRA752_ES1_0:
 	case DRA752_ES1_1:
 	case DRA752_ES2_0:
-		if (ram_size > CONFIG_MAX_MEM_MAPPED)
+		if (ram_size > CFG_MAX_MEM_MAPPED)
 			*dmm_lisa_regs = &lisa_map_dra7_2GB;
 		else
 			*dmm_lisa_regs = &lisa_map_dra7_1536MB;
@@ -371,7 +370,7 @@ void emif_get_dmm_regs(const struct dmm_lisa_map_regs **dmm_lisa_regs)
 	case DRA722_ES2_0:
 	case DRA722_ES2_1:
 	default:
-		if (ram_size < CONFIG_MAX_MEM_MAPPED)
+		if (ram_size < CFG_MAX_MEM_MAPPED)
 			*dmm_lisa_regs = &lisa_map_2G_x_2;
 		else
 			*dmm_lisa_regs = &lisa_map_2G_x_4;
@@ -628,7 +627,7 @@ int get_voltrail_opp(int rail_offset)
 /**
  * @brief board_init
  *
- * @return 0
+ * Return: 0
  */
 int board_init(void)
 {
@@ -644,11 +643,11 @@ int dram_init_banksize(void)
 
 	ram_size = board_ti_get_emif_size();
 
-	gd->bd->bi_dram[0].start = CONFIG_SYS_SDRAM_BASE;
+	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
 	gd->bd->bi_dram[0].size = get_effective_memsize();
-	if (ram_size > CONFIG_MAX_MEM_MAPPED) {
+	if (ram_size > CFG_MAX_MEM_MAPPED) {
 		gd->bd->bi_dram[1].start = 0x200000000;
-		gd->bd->bi_dram[1].size = ram_size - CONFIG_MAX_MEM_MAPPED;
+		gd->bd->bi_dram[1].size = ram_size - CFG_MAX_MEM_MAPPED;
 	}
 
 	return 0;
@@ -666,6 +665,15 @@ static int device_okay(const char *path)
 	return fdtdec_get_is_enabled(gd->fdt_blob, node);
 }
 #endif
+
+static struct ti_fdt_map ti_omap_dra7_evm_fdt_map[] = {
+	{"omap5_uevm", "ti/omap/omap5-uevm.dtb"},
+	{"dra7xx", "ti/omap/dra7-evm.dtb"},
+	{"dra72x-revc", "ti/omap/dra72-evm-revc.dtb"},
+	{"dra72x", "ti/omap/dra72-evm.dtb"},
+	{"dra71x", "ti/omap/dra71-evm.dtb"},
+	{"dra76x_acd", "ti/omap/dra76-evm.dtb"},
+};
 
 int board_late_init(void)
 {
@@ -688,6 +696,7 @@ int board_late_init(void)
 	}
 
 	set_board_info_env(name);
+	ti_set_fdt_env(name, ti_omap_dra7_evm_fdt_map);
 
 	/*
 	 * Default FIT boot on HS devices. Non FIT images are not allowed
@@ -715,7 +724,7 @@ int board_late_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_SPL_BUILD
+#ifdef CONFIG_XPL_BUILD
 void do_board_detect(void)
 {
 	int rc;
@@ -758,7 +767,7 @@ void do_board_detect(void)
 		snprintf(sysinfo.board_string, SYSINFO_BOARD_NAME_MAX_LEN,
 			 "Board: %s REV %s\n", bname, board_ti_get_rev());
 }
-#endif	/* CONFIG_SPL_BUILD */
+#endif	/* CONFIG_XPL_BUILD */
 
 void vcores_init(void)
 {
@@ -974,7 +983,7 @@ const struct mmc_platform_fixups *platform_fixups_mmc(uint32_t addr)
 }
 #endif
 
-#if defined(CONFIG_SPL_BUILD) && defined(CONFIG_SPL_OS_BOOT)
+#if defined(CONFIG_XPL_BUILD) && defined(CONFIG_SPL_OS_BOOT)
 int spl_start_uboot(void)
 {
 	/* break into full u-boot on 'c' */
@@ -1051,7 +1060,7 @@ int board_fit_config_name_match(const char *name)
 }
 #endif
 
-#if CONFIG_IS_ENABLED(FASTBOOT) && !CONFIG_IS_ENABLED(ENV_IS_NOWHERE)
+#if IS_ENABLED(CONFIG_FASTBOOT) && !CONFIG_IS_ENABLED(ENV_IS_NOWHERE)
 int fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
 {
 	if (reason != FASTBOOT_REBOOT_REASON_BOOTLOADER)
@@ -1062,18 +1071,4 @@ int fastboot_set_reboot_flag(enum fastboot_reboot_reason reason)
 	env_save();
 	return 0;
 }
-#endif
-
-#ifdef CONFIG_TI_SECURE_DEVICE
-void board_fit_image_post_process(void **p_image, size_t *p_size)
-{
-	secure_boot_verify_image(p_image, p_size);
-}
-
-void board_tee_image_process(ulong tee_image, size_t tee_size)
-{
-	secure_tee_install((u32)tee_image);
-}
-
-U_BOOT_FIT_LOADABLE_HANDLER(IH_TYPE_TEE, board_tee_image_process);
 #endif

@@ -7,7 +7,6 @@
  * Author: Sherry Sun <sherry.sun@nxp.com>
  */
 
-#include <common.h>
 #include <clk.h>
 #include <dm.h>
 #include <generic-phy.h>
@@ -190,10 +189,6 @@ static int cdns3_usb_phy_remove(struct udevice *dev)
 
 	if (priv->phy_clk.dev) {
 		ret = clk_disable(&priv->phy_clk);
-		if (ret)
-			return ret;
-
-		ret = clk_free(&priv->phy_clk);
 		if (ret)
 			return ret;
 	}

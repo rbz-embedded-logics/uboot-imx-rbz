@@ -10,6 +10,7 @@ ENTRY(_start)
 SECTIONS
 {
 	. = ALIGN(4);
+	__image_copy_start = ADDR(.text);
 	.text : {
 		arch/riscv/cpu/start.o	(.text)
 	}
@@ -44,11 +45,11 @@ SECTIONS
 
 	. = ALIGN(4);
 
-	.u_boot_list : {
-		KEEP(*(SORT(.u_boot_list*)));
+	__u_boot_list : {
+		KEEP(*(SORT(__u_boot_list*)));
 	}
 
-	. = ALIGN(4);
+	. = ALIGN(8);
 
 	.efi_runtime_rel : {
 		__efi_runtime_rel_start = .;
@@ -57,7 +58,7 @@ SECTIONS
 		__efi_runtime_rel_stop = .;
 	}
 
-	. = ALIGN(4);
+	__image_copy_end = .;
 
 	/DISCARD/ : { *(.rela.plt*) }
 	.rela.dyn : {
@@ -66,15 +67,14 @@ SECTIONS
 		__rel_dyn_end = .;
 	}
 
-	. = ALIGN(4);
+	. = ALIGN(8);
 
 	.dynsym : {
 		__dyn_sym_start = .;
 		*(.dynsym)
 		__dyn_sym_end = .;
+		. = ALIGN(8);
 	}
-
-	. = ALIGN(4);
 
 	_end = .;
 
@@ -85,3 +85,5 @@ SECTIONS
 		__bss_end = .;
 	}
 }
+
+ASSERT(_end % 8 == 0, "_end must be 8-byte aligned for device tree");

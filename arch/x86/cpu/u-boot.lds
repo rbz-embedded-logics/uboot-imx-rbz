@@ -11,11 +11,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-#ifndef CONFIG_CMDLINE
-	/DISCARD/ : { *(.u_boot_list_2_cmd_*) }
-#endif
-
-	. = CONFIG_SYS_TEXT_BASE;	/* Location of bootcode in flash */
+	. = CONFIG_TEXT_BASE;	/* Location of bootcode in flash */
 	__text_start = .;
 
 	.text.start : { *(.text.start); }
@@ -39,8 +35,8 @@ SECTIONS
 	. = ALIGN(4);
 
 	. = ALIGN(4);
-	.u_boot_list : {
-		KEEP(*(SORT(.u_boot_list*)));
+	__u_boot_list : {
+		KEEP(*(SORT(__u_boot_list*)));
 	}
 
 	. = ALIGN(4);
@@ -83,13 +79,12 @@ SECTIONS
 	. = ALIGN(4);
 	.dynsym : { *(.dynsym*) }
 
-	. = ALIGN(4);
-	__rel_dyn_start = .;
-	.rel.dyn : {
+	.rel.dyn ALIGN(4) : {
+		__rel_dyn_start = .;
 		*(.rel*)
+		__rel_dyn_end = .;
+		. = ALIGN(8);
 	}
-	__rel_dyn_end = .;
-	. = ALIGN(4);
 	_end = .;
 
 	.bss __rel_dyn_start (OVERLAY) : {
@@ -105,6 +100,7 @@ SECTIONS
 	/DISCARD/ : { *(.plt*) }
 	/DISCARD/ : { *(.interp*) }
 	/DISCARD/ : { *(.gnu*) }
+	/DISCARD/ : { *(.note.gnu.property) }
 
 #ifdef CONFIG_X86_16BIT_INIT
 	/*
@@ -123,3 +119,5 @@ SECTIONS
 #endif
 
 }
+
+ASSERT(_end % 8 == 0, "_end must be 8-byte aligned for device tree");

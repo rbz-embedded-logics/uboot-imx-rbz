@@ -17,7 +17,7 @@
 #include <asm/io.h>
 #include <asm/mach-imx/video.h>
 #include <command.h>
-#include <common.h>
+#include <env.h>
 #include <i2c.h>
 #include <input.h>
 #include <ipu_pixfmt.h>
@@ -30,13 +30,13 @@
 #include <panel.h>
 #include <rtc.h>
 #include <spi_flash.h>
-#include <version.h>
+#include <version_string.h>
 
 #include "../common/vpd_reader.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#ifndef CONFIG_SPL_BUILD
+#ifndef CONFIG_XPL_BUILD
 
 #define B1X5V2_GE_VPD_OFFSET	0x0100000
 #define B1X5V2_GE_VPD_SIZE	1022
@@ -696,4 +696,4 @@ U_BOOT_CMD(
        ""
 );
 
-#endif // CONFIG_SPL_BUILD
+#endif // CONFIG_XPL_BUILD

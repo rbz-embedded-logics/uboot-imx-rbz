@@ -6,8 +6,8 @@
  * Copyright 2018, 2021 NXP
  */
 #include <config.h>
-#include <common.h>
 #include <dm.h>
+#include <env.h>
 #include <log.h>
 #include <net.h>
 #include <phy.h>
@@ -16,7 +16,9 @@
 #include <u-boot/crc.h>
 #include <malloc.h>
 #include <asm/byteorder.h>
-#include <fs.h>
+#if (IS_ENABLED(CONFIG_PHY_AQUANTIA_UPLOAD_FW))
+#include <fw_loader.h>
+#endif
 
 #define AQUNTIA_10G_CTL		0x20
 #define AQUNTIA_VENDOR_P1	0xc400
@@ -127,52 +129,29 @@ struct fw_header {
 
 #pragma pack()
 
-#if defined(CONFIG_PHY_AQUANTIA_UPLOAD_FW)
-static int aquantia_read_fw(u8 **fw_addr, size_t *fw_length)
+#if (IS_ENABLED(CONFIG_PHY_AQUANTIA_UPLOAD_FW))
+int __weak aquantia_read_fw(struct phy_device *phydev,
+			    u8 **fw_addr, size_t *fw_length)
 {
-	loff_t length, read;
 	int ret;
-	void *addr = NULL;
+	u8 *microcode;
 
-	*fw_addr = NULL;
-	*fw_length = 0;
-	debug("Loading Acquantia microcode from %s %s\n",
-	      CONFIG_PHY_AQUANTIA_FW_PART, CONFIG_PHY_AQUANTIA_FW_NAME);
-	ret = fs_set_blk_dev("mmc", CONFIG_PHY_AQUANTIA_FW_PART, FS_TYPE_ANY);
-	if (ret < 0)
-		goto cleanup;
-
-	ret = fs_size(CONFIG_PHY_AQUANTIA_FW_NAME, &length);
-	if (ret < 0)
-		goto cleanup;
-
-	addr = malloc(length);
-	if (!addr) {
-		ret = -ENOMEM;
-		goto cleanup;
+	microcode = malloc(CONFIG_PHY_AQUANTIA_FW_MAX_SIZE);
+	if (!microcode) {
+		printf("Failed to allocate memory for firmware\n");
+		return -ENOMEM;
 	}
 
-	ret = fs_set_blk_dev("mmc", CONFIG_PHY_AQUANTIA_FW_PART, FS_TYPE_ANY);
-	if (ret < 0)
-		goto cleanup;
-
-	ret = fs_read(CONFIG_PHY_AQUANTIA_FW_NAME, (ulong)addr, 0, length,
-		      &read);
-	if (ret < 0)
-		goto cleanup;
-
-	*fw_addr = addr;
-	*fw_length = length;
-	debug("Found Acquantia microcode.\n");
-
-cleanup:
-	if (ret < 0) {
-		printf("loading firmware file %s %s failed with error %d\n",
-		       CONFIG_PHY_AQUANTIA_FW_PART,
-		       CONFIG_PHY_AQUANTIA_FW_NAME, ret);
-		free(addr);
+	ret = request_firmware_into_buf_via_script(
+		microcode, CONFIG_PHY_AQUANTIA_FW_MAX_SIZE,
+		"aqr_phy_load_firmware", fw_length);
+	if (ret) {
+		free(microcode);
+		return ret;
 	}
-	return ret;
+
+	*fw_addr = microcode;
+	return 1;
 }
 
 /* load data into the phy's memory */
@@ -218,27 +197,26 @@ static u32 unpack_u24(const u8 *data)
 	return (data[2] << 16) + (data[1] << 8) + data[0];
 }
 
-static int aquantia_upload_firmware(struct phy_device *phydev)
+static int aquantia_do_upload_firmware(struct phy_device *phydev,
+					const u8 *addr, size_t fw_length)
 {
 	int ret;
-	u8 *addr = NULL;
-	size_t fw_length = 0;
 	u16 calculated_crc, read_crc;
 	char version[VERSION_STRING_SIZE];
 	u32 primary_offset, iram_offset, iram_size, dram_offset, dram_size;
 	const struct fw_header *header;
 
-	ret = aquantia_read_fw(&addr, &fw_length);
-	if (ret != 0)
-		return ret;
+	if (!addr || !fw_length) {
+		printf("%s: Invalid firmware data\n", phydev->dev->name);
+		return -EINVAL;
+	}
 
-	read_crc = (addr[fw_length - 2] << 8)  | addr[fw_length - 1];
+	read_crc = (addr[fw_length - 2] << 8) | addr[fw_length - 1];
 	calculated_crc = crc16_ccitt(0, addr, fw_length - 2);
 	if (read_crc != calculated_crc) {
 		printf("%s bad firmware crc: file 0x%04x calculated 0x%04x\n",
 		       phydev->dev->name, read_crc, calculated_crc);
-		ret = -EINVAL;
-		goto done;
+		return -EINVAL;
 	}
 
 	/* Find the DRAM and IRAM sections within the firmware file. */
@@ -257,7 +235,7 @@ static int aquantia_upload_firmware(struct phy_device *phydev)
 
 	strlcpy(version, (char *)&addr[dram_offset + VERSION_STRING_OFFSET],
 		VERSION_STRING_SIZE);
-	printf("%s loading firmare version '%s'\n", phydev->dev->name, version);
+	printf("%s loading firmware version '%s'\n", phydev->dev->name, version);
 
 	/* stall the microcprocessor */
 	phy_write(phydev, MDIO_MMD_VEND1, UP_CONTROL,
@@ -268,14 +246,14 @@ static int aquantia_upload_firmware(struct phy_device *phydev)
 	ret = aquantia_load_memory(phydev, DRAM_BASE_ADDR, &addr[dram_offset],
 				   dram_size);
 	if (ret != 0)
-		goto done;
+		return ret;
 
 	debug("loading iram 0x%08x from offset=%d size=%d\n",
 	      IRAM_BASE_ADDR, iram_offset, iram_size);
 	ret = aquantia_load_memory(phydev, IRAM_BASE_ADDR, &addr[iram_offset],
 				   iram_size);
 	if (ret != 0)
-		goto done;
+		return ret;
 
 	/* make sure soft reset and low power mode are clear */
 	phy_write(phydev, MDIO_MMD_VEND1, GLOBAL_STANDARD_CONTROL, 0);
@@ -288,9 +266,24 @@ static int aquantia_upload_firmware(struct phy_device *phydev)
 
 	phy_write(phydev, MDIO_MMD_VEND1, UP_CONTROL, UP_RUN_STALL_OVERRIDE);
 
-	printf("%s firmare loading done.\n", phydev->dev->name);
-done:
-	free(addr);
+	printf("%s firmware loading done.\n", phydev->dev->name);
+	return 0;
+}
+
+static int aquantia_upload_firmware(struct phy_device *phydev)
+{
+	int ret, fwrc;
+	u8 *addr = NULL;
+	size_t fw_length;
+
+	fwrc = aquantia_read_fw(phydev, &addr, &fw_length);
+	if (fwrc < 0)
+		return fwrc;
+
+	ret = aquantia_do_upload_firmware(phydev, addr, fw_length);
+	if (fwrc > 0)
+		free(addr);
+
 	return ret;
 }
 #else
@@ -305,12 +298,12 @@ struct {
 	u16 syscfg;
 	int cnt;
 	u16 start_rate;
-} aquantia_syscfg[PHY_INTERFACE_MODE_COUNT] = {
+} aquantia_syscfg[PHY_INTERFACE_MODE_MAX] = {
 	[PHY_INTERFACE_MODE_SGMII] =      {0x04b, AQUANTIA_VND1_GSYSCFG_1G,
 					   AQUANTIA_VND1_GSTART_RATE_1G},
-	[PHY_INTERFACE_MODE_SGMII_2500] = {0x144, AQUANTIA_VND1_GSYSCFG_2_5G,
+	[PHY_INTERFACE_MODE_2500BASEX]  = {0x144, AQUANTIA_VND1_GSYSCFG_2_5G,
 					   AQUANTIA_VND1_GSTART_RATE_2_5G},
-	[PHY_INTERFACE_MODE_XFI] =        {0x100, AQUANTIA_VND1_GSYSCFG_10G,
+	[PHY_INTERFACE_MODE_10GBASER] =   {0x100, AQUANTIA_VND1_GSYSCFG_10G,
 					   AQUANTIA_VND1_GSTART_RATE_10G},
 	[PHY_INTERFACE_MODE_USXGMII] =    {0x080, AQUANTIA_VND1_GSYSCFG_10G,
 					   AQUANTIA_VND1_GSTART_RATE_10G},
@@ -338,8 +331,7 @@ static int aquantia_set_proto(struct phy_device *phydev,
 
 static int aquantia_dts_config(struct phy_device *phydev)
 {
-#ifdef CONFIG_DM_ETH
-	ofnode node = phydev->node;
+	ofnode node = phy_get_ofnode(phydev);
 	u32 prop;
 	u16 reg;
 
@@ -374,7 +366,6 @@ static int aquantia_dts_config(struct phy_device *phydev)
 			  (u16)(prop << 1));
 	}
 
-#endif
 	return 0;
 }
 
@@ -409,7 +400,7 @@ int aquantia_config(struct phy_device *phydev)
 	int interface = phydev->interface;
 	u32 val, id, rstatus, fault;
 	u32 reg_val1 = 0;
-	int num_retries = 5;
+	int num_retries = 200;
 	int usx_an = 0;
 
 	/*
@@ -443,18 +434,18 @@ int aquantia_config(struct phy_device *phydev)
 			return ret;
 	}
 	/*
-	 * for backward compatibility convert XGMII into either XFI or USX based
-	 * on FW config
+	 * for backward compatibility convert XGMII into either 10GBase-R or
+	 * USXGMII based on FW config
 	 */
 	if (interface == PHY_INTERFACE_MODE_XGMII) {
-		debug("use XFI or USXGMII SI protos, XGMII is not valid\n");
+		debug("use 10GBase-R or USXGMII SI protos, XGMII is not valid\n");
 
 		reg_val1 = phy_read(phydev, MDIO_MMD_PHYXS,
 				    AQUANTIA_SYSTEM_INTERFACE_SR);
 		if ((reg_val1 & AQUANTIA_SI_IN_USE_MASK) == AQUANTIA_SI_USXGMII)
 			interface = PHY_INTERFACE_MODE_USXGMII;
 		else
-			interface = PHY_INTERFACE_MODE_XFI;
+			interface = PHY_INTERFACE_MODE_10GBASER;
 	}
 
 	/*
@@ -494,7 +485,7 @@ int aquantia_config(struct phy_device *phydev)
 	case PHY_INTERFACE_MODE_USXGMII:
 		usx_an = 1;
 		/* FALLTHROUGH */
-	case PHY_INTERFACE_MODE_XFI:
+	case PHY_INTERFACE_MODE_10GBASER:
 		/* 10GBASE-T mode */
 		phydev->advertising = SUPPORTED_10000baseT_Full;
 		phydev->supported = phydev->advertising;
@@ -515,14 +506,14 @@ int aquantia_config(struct phy_device *phydev)
 			      phydev->dev->name);
 		} else {
 			reg_val1 &= ~AQUANTIA_USX_AUTONEG_CONTROL_ENA;
-			debug("%s: system interface XFI\n",
+			debug("%s: system interface 10GBase-R\n",
 			      phydev->dev->name);
 		}
 
 		phy_write(phydev, MDIO_MMD_PHYXS,
 			  AQUANTIA_VENDOR_PROVISIONING_REG, reg_val1);
 		break;
-	case PHY_INTERFACE_MODE_SGMII_2500:
+	case PHY_INTERFACE_MODE_2500BASEX:
 		/* 2.5GBASE-T mode */
 		phydev->advertising = SUPPORTED_1000baseT_Full;
 		phydev->supported = phydev->advertising;
@@ -554,14 +545,15 @@ int aquantia_config(struct phy_device *phydev)
 
 int aquantia_startup(struct phy_device *phydev)
 {
-	u32 speed;
-	int i = 0;
+	u32 speed, i = 0;
 	int reg;
 
 	phydev->duplex = DUPLEX_FULL;
 
 	/* if the AN is still in progress, wait till timeout. */
 	if (!aquantia_link_is_up(phydev)) {
+		u32 aneg_timeout = env_get_ulong("phy_aneg_timeout", 10,
+						 CONFIG_PHY_ANEG_TIMEOUT);
 		printf("%s Waiting for PHY auto negotiation to complete",
 		       phydev->dev->name);
 		do {
@@ -569,9 +561,9 @@ int aquantia_startup(struct phy_device *phydev)
 			if ((i++ % 500) == 0)
 				printf(".");
 		} while (!aquantia_link_is_up(phydev) &&
-			 i < (4 * PHY_ANEG_TIMEOUT));
+			 i < (4 * aneg_timeout));
 
-		if (i > PHY_ANEG_TIMEOUT)
+		if (i > aneg_timeout)
 			printf(" TIMEOUT !\n");
 	}
 
@@ -600,7 +592,7 @@ int aquantia_startup(struct phy_device *phydev)
 	return 0;
 }
 
-struct phy_driver aq1202_driver = {
+U_BOOT_PHY_DRIVER(aq1202) = {
 	.name = "Aquantia AQ1202",
 	.uid = 0x3a1b445,
 	.mask = 0xfffffff0,
@@ -613,7 +605,7 @@ struct phy_driver aq1202_driver = {
 	.shutdown = &gen10g_shutdown,
 };
 
-struct phy_driver aq2104_driver = {
+U_BOOT_PHY_DRIVER(aq2104) = {
 	.name = "Aquantia AQ2104",
 	.uid = 0x3a1b460,
 	.mask = 0xfffffff0,
@@ -626,7 +618,7 @@ struct phy_driver aq2104_driver = {
 	.shutdown = &gen10g_shutdown,
 };
 
-struct phy_driver aqr105_driver = {
+U_BOOT_PHY_DRIVER(aqr105) = {
 	.name = "Aquantia AQR105",
 	.uid = 0x3a1b4a2,
 	.mask = 0xfffffff0,
@@ -640,7 +632,7 @@ struct phy_driver aqr105_driver = {
 	.data = AQUANTIA_GEN1,
 };
 
-struct phy_driver aqr106_driver = {
+U_BOOT_PHY_DRIVER(aqr106) = {
 	.name = "Aquantia AQR106",
 	.uid = 0x3a1b4d0,
 	.mask = 0xfffffff0,
@@ -653,7 +645,7 @@ struct phy_driver aqr106_driver = {
 	.shutdown = &gen10g_shutdown,
 };
 
-struct phy_driver aqr107_driver = {
+U_BOOT_PHY_DRIVER(aqr107) = {
 	.name = "Aquantia AQR107",
 	.uid = 0x3a1b4e0,
 	.mask = 0xfffffff0,
@@ -667,7 +659,7 @@ struct phy_driver aqr107_driver = {
 	.data = AQUANTIA_GEN2,
 };
 
-struct phy_driver aqr112_driver = {
+U_BOOT_PHY_DRIVER(aqr112) = {
 	.name = "Aquantia AQR112",
 	.uid = 0x3a1b660,
 	.mask = 0xfffffff0,
@@ -681,7 +673,7 @@ struct phy_driver aqr112_driver = {
 	.data = AQUANTIA_GEN3,
 };
 
-struct phy_driver aqr113c_driver = {
+U_BOOT_PHY_DRIVER(aqr113c) = {
 	.name = "Aquantia AQR113C",
 	.uid = 0x31c31c12,
 	.mask = 0xfffffff0,
@@ -695,7 +687,21 @@ struct phy_driver aqr113c_driver = {
 	.data = AQUANTIA_GEN3,
 };
 
-struct phy_driver aqr405_driver = {
+U_BOOT_PHY_DRIVER(aqr115) = {
+	.name = "Aquantia AQR115",
+	.uid = 0x31c31c63,
+	.mask = 0xfffffff0,
+	.features = PHY_GBIT_FEATURES | SUPPORTED_2500baseX_Full,
+	.mmds = (MDIO_MMD_PMAPMD | MDIO_MMD_PCS|
+		 MDIO_MMD_PHYXS | MDIO_MMD_AN |
+		 MDIO_MMD_VEND1),
+	.config = &aquantia_config,
+	.startup = &aquantia_startup,
+	.shutdown = &gen10g_shutdown,
+	.data = AQUANTIA_GEN3,
+};
+
+U_BOOT_PHY_DRIVER(aqr405) = {
 	.name = "Aquantia AQR405",
 	.uid = 0x3a1b4b2,
 	.mask = 0xfffffff0,
@@ -709,7 +715,7 @@ struct phy_driver aqr405_driver = {
 	.data = AQUANTIA_GEN1,
 };
 
-struct phy_driver aqr412_driver = {
+U_BOOT_PHY_DRIVER(aqr412) = {
 	.name = "Aquantia AQR412",
 	.uid = 0x3a1b710,
 	.mask = 0xfffffff0,
@@ -723,17 +729,16 @@ struct phy_driver aqr412_driver = {
 	.data = AQUANTIA_GEN3,
 };
 
-int phy_aquantia_init(void)
-{
-	phy_register(&aq1202_driver);
-	phy_register(&aq2104_driver);
-	phy_register(&aqr105_driver);
-	phy_register(&aqr106_driver);
-	phy_register(&aqr107_driver);
-	phy_register(&aqr112_driver);
-	phy_register(&aqr113c_driver);
-	phy_register(&aqr405_driver);
-	phy_register(&aqr412_driver);
-
-	return 0;
-}
+U_BOOT_PHY_DRIVER(cux3410) = {
+	.name = "Marvell CUX3410",
+	.uid = 0x31c31dd3,
+	.mask = 0xfffffff0,
+	.features = PHY_10G_FEATURES,
+	.mmds = (MDIO_MMD_PMAPMD | MDIO_MMD_PCS |
+		 MDIO_MMD_PHYXS | MDIO_MMD_AN |
+		 MDIO_MMD_VEND1),
+	.config = &aquantia_config,
+	.startup = &aquantia_startup,
+	.shutdown = &gen10g_shutdown,
+	.data = AQUANTIA_GEN3,
+};
