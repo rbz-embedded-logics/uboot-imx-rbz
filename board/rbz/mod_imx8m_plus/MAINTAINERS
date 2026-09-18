@@ -1,0 +1,6 @@
+RBZ MOD_IMX8M_PLUS BOARD
+M:	Marina Calvo <mcalvo@rbz.es>
+S:	Maintained
+F:	board/rbz/mod_imx8m_plus/
+F:	include/configs/mod_imx8m_plus.h
+F:	configs/mod_imx8m_plus_defconfig

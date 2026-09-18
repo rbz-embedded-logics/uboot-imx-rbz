@@ -1,0 +1,15 @@
+if TARGET_MOD_IMX8M_PLUS
+
+config SYS_BOARD
+	default "mod_imx8m_plus"
+
+config SYS_VENDOR
+	default "rbz"
+
+config SYS_CONFIG_NAME
+	default "mod_imx8m_plus"
+
+config IMX_CONFIG
+    default "board/rbz/mod_imx8m_plus/imximage-8mp-lpddr4.cfg"
+
+endif
