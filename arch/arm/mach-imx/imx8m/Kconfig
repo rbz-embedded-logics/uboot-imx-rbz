@@ -395,7 +395,6 @@ config TARGET_IMX8MP_EVK
 	select REMOTEPROC_IMX
 	select REGMAP
 	select SYSCON
-    select BINMAN
 	imply OF_UPSTREAM
 	imply BOOTSTD_FULL
 	imply BOOTSTD_BOOTCOMMAND
@@ -425,7 +424,6 @@ config TARGET_MOD_IMX8M_PLUS
     select REMOTEPROC_IMX
     select REGMAP
     select SYSCON
-    select BINMAN
     imply OF_UPSTREAM
     imply BOOTSTD_FULL
     imply BOOTSTD_BOOTCOMMAND
